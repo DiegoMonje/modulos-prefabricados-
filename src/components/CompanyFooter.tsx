@@ -1,8 +1,9 @@
-import { Building2, Mail, MapPin, MessageCircle, Phone } from 'lucide-react';
+import { Building2, Cookie, FileText, Mail, MessageCircle, Phone, ShieldCheck } from 'lucide-react';
+import type { LegalPageType } from './LegalPages';
 
 const whatsappUrl = 'https://wa.me/34600227252?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20una%20caseta%20prefabricada.';
 
-export const CompanyFooter = () => (
+export const CompanyFooter = ({ onLegalPage }: { onLegalPage: (page: LegalPageType) => void }) => (
   <footer id="footer-contacto" className="border-t border-slate-800 bg-slate-950 text-white">
     <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 md:grid-cols-[1.2fr_1fr_1fr]">
       <div>
@@ -40,14 +41,20 @@ export const CompanyFooter = () => (
       </div>
 
       <div>
-        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">Dirección</h3>
-        <div className="mt-4 flex items-start gap-3 text-sm leading-6 text-slate-300">
-          <MapPin size={18} className="mt-1 shrink-0 text-brand-orange" />
-          <p>
-            Plaza de los Inventores 7, 1D<br />
-            San José de la Rinconada<br />
-            41300, Sevilla
-          </p>
+        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">Legal</h3>
+        <div className="mt-4 space-y-3 text-sm text-slate-300">
+          <button type="button" onClick={() => onLegalPage('aviso-legal')} className="flex items-center gap-3 text-left transition hover:text-white">
+            <FileText size={18} className="text-brand-orange" />
+            <span>Aviso legal</span>
+          </button>
+          <button type="button" onClick={() => onLegalPage('privacidad')} className="flex items-center gap-3 text-left transition hover:text-white">
+            <ShieldCheck size={18} className="text-brand-blue" />
+            <span>Política de privacidad</span>
+          </button>
+          <button type="button" onClick={() => onLegalPage('cookies')} className="flex items-center gap-3 text-left transition hover:text-white">
+            <Cookie size={18} className="text-brand-green" />
+            <span>Política de cookies</span>
+          </button>
         </div>
       </div>
     </div>
