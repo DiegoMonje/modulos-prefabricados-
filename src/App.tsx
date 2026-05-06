@@ -3,6 +3,7 @@ import { PublicLanding } from './components/PublicLanding';
 import { Configurator } from './components/Configurator';
 import { AdminPanel } from './components/AdminPanel';
 import { FaqChatbot } from './components/FaqChatbot';
+import { CompanyFooter } from './components/CompanyFooter';
 
 type View = 'public' | 'configurator' | 'admin';
 
@@ -13,6 +14,7 @@ export default function App() {
     return (
       <>
         <Configurator onBack={() => setView('public')} onAdmin={() => setView('admin')} />
+        <CompanyFooter />
         <FaqChatbot onStartConfigurator={() => setView('configurator')} />
       </>
     );
@@ -25,6 +27,7 @@ export default function App() {
   return (
     <>
       <PublicLanding onStart={() => setView('configurator')} onAdmin={() => setView('admin')} />
+      <CompanyFooter />
       <FaqChatbot onStartConfigurator={() => setView('configurator')} />
     </>
   );
