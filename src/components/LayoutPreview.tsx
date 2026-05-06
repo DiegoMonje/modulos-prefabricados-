@@ -1,22 +1,14 @@
 import type React from 'react';
-import { LayoutItem } from '../types';
+import { LayoutItem, LayoutItemType } from '../types';
 import { formatCurrency } from '../utils/pricing';
 
-const CANVAS_WIDTH = 1220;
-const CANVAS_HEIGHT = 760;
-const PADDING_X = 118;
-const GRID_STEP = 24;
+const WALL_THICKNESS = 10;
+const GRID_PERCENT = 2;
+const CAD_STAGE_MIN_WIDTH = 980;
 
-const strokeFor = (type: string) => {
-  if (type.includes('window')) return '#1d4ed8';
-  if (type.includes('bathroom')) return '#0f766e';
-  if (type.includes('air_conditioning')) return '#6d28d9';
-  if (type.includes('light')) return '#b45309';
-  if (type.includes('room') || type.includes('partition')) return '#111827';
-  return '#0f172a';
-};
+const isDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType);
 
-const labelFor = (type: string) => {
+const labelFor = (type: LayoutItemType) => {
   if (type === 'base_door' || type === 'additional_door') return 'Puerta';
   if (type === 'base_window_80x80' || type === 'window_80x80') return 'Ventana 80x80';
   if (type === 'large_window') return 'Ventana grande';
@@ -30,150 +22,226 @@ const labelFor = (type: string) => {
   return 'Elemento';
 };
 
-const toCanvasBox = (item: LayoutItem, innerWidth: number, innerHeight: number, offsetY: number) => ({
-  x: PADDING_X + (item.x / 100) * innerWidth,
-  y: offsetY + (item.y / 100) * innerHeight,
-  width: Math.max((item.width / 100) * innerWidth, 14),
-  height: Math.max((item.height / 100) * innerHeight, 14),
-});
+const symbolColorFor = (type: LayoutItemType) => {
+  if (type.includes('window')) return '#2563eb';
+  if (type.includes('bathroom')) return '#0f766e';
+  if (type.includes('air_conditioning')) return '#7c3aed';
+  if (type.includes('light')) return '#d97706';
+  if (type.includes('socket')) return '#334155';
+  if (type.includes('room') || type.includes('partition')) return '#111827';
+  return '#0f172a';
+};
 
-const DimensionLine = ({ x1, y1, x2, y2, label, vertical = false }: { x1: number; y1: number; x2: number; y2: number; label: string; vertical?: boolean }) => (
-  <g>
-    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#475569" strokeWidth="1.4" markerStart="url(#dimArrow)" markerEnd="url(#dimArrow)" />
-    <text
-      x={(x1 + x2) / 2}
-      y={(y1 + y2) / 2 - (vertical ? 0 : 12)}
-      textAnchor="middle"
-      fontSize="16"
-      fontWeight="800"
-      fill="#334155"
-      transform={vertical ? `rotate(-90 ${(x1 + x2) / 2} ${(y1 + y2) / 2})` : undefined}
+const PriceBadge = ({ item }: { item: LayoutItem }) => {
+  const text = item.included ? 'Incluido' : item.price > 0 ? `+ ${formatCurrency(item.price)}` : 'Sin coste';
+  return (
+    <span
+      className={`pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-black shadow-sm ${
+        item.included ? 'bg-emerald-50 text-emerald-700' : item.price > 0 ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-600'
+      }`}
     >
-      {label}
-    </text>
-  </g>
+      {text}
+    </span>
+  );
+};
+
+const SelectionHandles = () => (
+  <>
+    {[
+      ['-left-1.5', '-top-1.5'],
+      ['-right-1.5', '-top-1.5'],
+      ['-bottom-1.5', '-left-1.5'],
+      ['-bottom-1.5', '-right-1.5'],
+    ].map(([x, y]) => (
+      <span key={`${x}-${y}`} className={`pointer-events-none absolute ${x} ${y} h-3 w-3 rounded-sm border border-white bg-orange-500 shadow`} />
+    ))}
+  </>
 );
 
-const TechnicalSymbol = ({ item, selected, innerWidth, innerHeight, offsetY }: { item: LayoutItem; selected: boolean; innerWidth: number; innerHeight: number; offsetY: number }) => {
-  const box = toCanvasBox(item, innerWidth, innerHeight, offsetY);
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  const stroke = strokeFor(item.itemType);
-  const selectionStroke = selected ? '#f97316' : stroke;
-  const label = labelFor(item.itemType);
-  const isIncluded = !!item.included;
-  const rotation = item.rotation || 0;
-  const isDivision = ['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType);
+const CadSymbol = ({ item, selected }: { item: LayoutItem; selected: boolean }) => {
+  const color = selected ? '#f97316' : symbolColorFor(item.itemType);
+  const textColor = selected ? 'text-orange-700' : 'text-slate-900';
 
-  const makeDoor = () => {
-    const side = Math.max(box.width, box.height);
+  if (item.itemType === 'base_door' || item.itemType === 'additional_door') {
     return (
-      <g>
-        <line x1={box.x} y1={box.y + box.height} x2={box.x + box.width} y2={box.y + box.height} stroke={selectionStroke} strokeWidth="2.5" />
-        <line x1={box.x} y1={box.y} x2={box.x} y2={box.y + box.height} stroke={selectionStroke} strokeWidth="2.5" />
-        <path d={`M ${box.x} ${box.y + box.height} A ${side} ${side} 0 0 1 ${box.x + box.width} ${box.y}`} fill="none" stroke={selectionStroke} strokeWidth="1.9" strokeDasharray="5 4" />
-      </g>
+      <div className="relative h-full w-full">
+        <svg viewBox="0 0 120 70" className="h-full w-full overflow-visible">
+          <line x1="0" y1="67" x2="110" y2="67" stroke={color} strokeWidth="7" strokeLinecap="round" />
+          <line x1="0" y1="0" x2="0" y2="67" stroke={color} strokeWidth="7" strokeLinecap="round" />
+          <path d="M 3 67 A 67 67 0 0 1 110 8" fill="none" stroke={color} strokeWidth="4" strokeDasharray="7 5" />
+        </svg>
+      </div>
     );
-  };
+  }
 
-  const makeWindow = () => (
-    <g>
-      <line x1={box.x} y1={cy - 5} x2={box.x + box.width} y2={cy - 5} stroke={selectionStroke} strokeWidth="2.4" />
-      <line x1={box.x} y1={cy + 5} x2={box.x + box.width} y2={cy + 5} stroke={selectionStroke} strokeWidth="2.4" />
-      <line x1={box.x + 3} y1={cy} x2={box.x + box.width - 3} y2={cy} stroke={selectionStroke} strokeWidth="1.2" strokeDasharray="4 4" />
-    </g>
-  );
+  if (item.itemType === 'base_window_80x80' || item.itemType === 'window_80x80' || item.itemType === 'large_window') {
+    return (
+      <div className="flex h-full w-full items-center">
+        <div className="h-3 w-full rounded-sm border-y-4 border-blue-600 bg-blue-50 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.35)]">
+          <div className="mt-0.5 h-px w-full border-t border-dashed border-blue-500" />
+        </div>
+      </div>
+    );
+  }
 
-  const makeSocket = () => (
-    <g>
-      <circle cx={cx} cy={cy} r={Math.min(box.width, box.height) / 2.15} fill="white" stroke={selectionStroke} strokeWidth="1.9" />
-      <circle cx={cx - 5} cy={cy} r="1.8" fill={selectionStroke} />
-      <circle cx={cx + 5} cy={cy} r="1.8" fill={selectionStroke} />
-    </g>
-  );
+  if (item.itemType === 'base_socket' || item.itemType === 'additional_socket') {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="relative flex aspect-square h-full max-h-11 min-h-7 min-w-7 items-center justify-center rounded-full border-2 bg-white shadow-sm" style={{ borderColor: color }}>
+          <span className="mr-1 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+        </div>
+      </div>
+    );
+  }
 
-  const makeLight = () => (
-    <g>
-      <circle cx={cx} cy={cy} r={Math.min(box.width, box.height) / 2.2} fill="white" stroke={selectionStroke} strokeWidth="1.9" />
-      <line x1={cx - 7} y1={cy - 7} x2={cx + 7} y2={cy + 7} stroke={selectionStroke} strokeWidth="1.4" />
-      <line x1={cx + 7} y1={cy - 7} x2={cx - 7} y2={cy + 7} stroke={selectionStroke} strokeWidth="1.4" />
-    </g>
-  );
+  if (item.itemType === 'base_light_point') {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="relative flex aspect-square h-full max-h-11 min-h-7 min-w-7 items-center justify-center rounded-full border-2 bg-white shadow-sm" style={{ borderColor: color }}>
+          <span className="absolute h-0.5 w-4 rotate-45 rounded" style={{ backgroundColor: color }} />
+          <span className="absolute h-0.5 w-4 -rotate-45 rounded" style={{ backgroundColor: color }} />
+        </div>
+      </div>
+    );
+  }
 
-  const makePanel = () => (
-    <g>
-      <rect x={box.x} y={box.y} width={box.width} height={box.height} fill="white" stroke={selectionStroke} strokeWidth="1.8" rx="2" />
-      <path d={`M ${box.x + 6} ${box.y + box.height - 6} L ${box.x + 6} ${box.y + 6} L ${box.x + box.width - 6} ${box.y + 6}`} fill="none" stroke={selectionStroke} strokeWidth="1.3" />
-      <text x={cx} y={cy + 4} textAnchor="middle" fontSize="12" fontWeight="800" fill={selectionStroke}>CE</text>
-    </g>
-  );
+  if (item.itemType === 'base_electrical_panel') {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded border-2 bg-white text-[10px] font-black shadow-sm" style={{ borderColor: color, color }}>
+        CE
+      </div>
+    );
+  }
 
-  const makePartition = () => (
-    <g>
-      <rect x={box.x} y={box.y} width={box.width} height={box.height} fill="#111827" stroke={selectionStroke} strokeWidth="1" />
-      <line x1={box.x} y1={box.y + box.height / 2} x2={box.x + box.width} y2={box.y + box.height / 2} stroke="#ffffff" strokeWidth="0.9" opacity="0.7" />
-    </g>
-  );
+  if (item.itemType === 'wall_partition') {
+    return (
+      <div className="relative h-full w-full rounded-sm bg-slate-950 shadow-sm">
+        <div className="absolute inset-x-1 top-1/2 h-px bg-white/60" />
+      </div>
+    );
+  }
 
-  const makeRoom = () => (
-    <g>
-      <rect x={box.x} y={box.y} width={box.width} height={box.height} fill="rgba(255,255,255,0.86)" stroke={selectionStroke} strokeWidth="2.5" />
-      <rect x={box.x} y={box.y} width={box.width} height="6" fill="#111827" opacity="0.9" />
-      <rect x={box.x} y={box.y + box.height - 6} width={box.width} height="6" fill="#111827" opacity="0.9" />
-      <text x={cx} y={cy + 5} textAnchor="middle" fontSize="18" fontWeight="900" fill="#111827">HAB</text>
-      <text x={cx} y={cy + 25} textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748b">División {item.layoutOrientation === 'longitudinal' ? 'a lo largo' : 'a lo ancho'}</text>
-    </g>
-  );
+  if (item.itemType === 'interior_room') {
+    return (
+      <div className="flex h-full w-full flex-col overflow-hidden rounded-sm border-2 bg-white/90 shadow-sm" style={{ borderColor: color }}>
+        <div className="h-2 bg-slate-950" />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center">
+            <p className={`text-sm font-black ${textColor}`}>HAB</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{item.layoutOrientation === 'longitudinal' ? 'Largo' : 'Ancho'}</p>
+          </div>
+        </div>
+        <div className="h-2 bg-slate-950" />
+      </div>
+    );
+  }
 
-  const makeBathroom = () => (
-    <g>
-      <rect x={box.x} y={box.y} width={box.width} height={box.height} fill="rgba(240,253,250,0.94)" stroke={selectionStroke} strokeWidth="2.5" />
-      <rect x={box.x} y={box.y} width={box.width} height="6" fill="#0f766e" opacity="0.95" />
-      <rect x={box.x} y={box.y + box.height - 6} width={box.width} height="6" fill="#0f766e" opacity="0.95" />
-      <circle cx={box.x + 34} cy={box.y + 36} r="12" fill="none" stroke={selectionStroke} strokeWidth="1.5" />
-      <rect x={box.x + box.width - 62} y={box.y + box.height - 48} width="42" height="28" fill="none" stroke={selectionStroke} strokeWidth="1.5" rx="3" />
-      <line x1={box.x + box.width - 55} y1={box.y + box.height - 34} x2={box.x + box.width - 27} y2={box.y + box.height - 34} stroke={selectionStroke} strokeWidth="1" />
-      <text x={cx} y={cy + 5} textAnchor="middle" fontSize="18" fontWeight="900" fill="#0f766e">BAÑO</text>
-      <text x={cx} y={cy + 25} textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748b">División {item.layoutOrientation === 'longitudinal' ? 'a lo largo' : 'a lo ancho'}</text>
-    </g>
-  );
+  if (item.itemType === 'full_bathroom') {
+    return (
+      <div className="relative h-full w-full overflow-hidden rounded-sm border-2 bg-teal-50/95 shadow-sm" style={{ borderColor: color }}>
+        <div className="absolute inset-x-0 top-0 h-2 bg-teal-700" />
+        <div className="absolute left-3 top-5 h-5 w-5 rounded-full border-2" style={{ borderColor: color }} />
+        <div className="absolute bottom-4 right-3 h-5 w-9 rounded border-2" style={{ borderColor: color }} />
+        <div className="flex h-full items-center justify-center text-center">
+          <div>
+            <p className="text-sm font-black text-teal-800">BAÑO</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{item.layoutOrientation === 'longitudinal' ? 'Largo' : 'Ancho'}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const makeAC = () => (
-    <g>
-      <rect x={box.x} y={box.y} width={box.width} height={box.height} fill="white" stroke={selectionStroke} strokeWidth="1.8" rx="4" />
-      <line x1={box.x + 5} y1={cy - 4} x2={box.x + box.width - 5} y2={cy - 4} stroke={selectionStroke} strokeWidth="1.2" />
-      <line x1={box.x + 5} y1={cy + 1} x2={box.x + box.width - 5} y2={cy + 1} stroke={selectionStroke} strokeWidth="1.2" />
-      <text x={cx} y={cy + 13} textAnchor="middle" fontSize="11" fontWeight="800" fill={selectionStroke}>A/A</text>
-    </g>
-  );
+  if (item.itemType === 'air_conditioning') {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center rounded border-2 bg-white text-[10px] font-black shadow-sm" style={{ borderColor: color, color }}>
+        <span className="mb-1 h-px w-4/5" style={{ backgroundColor: color }} />
+        A/A
+      </div>
+    );
+  }
 
-  let shape: React.ReactNode = null;
-  if (item.itemType.includes('door')) shape = makeDoor();
-  else if (item.itemType.includes('window')) shape = makeWindow();
-  else if (item.itemType.includes('socket')) shape = makeSocket();
-  else if (item.itemType.includes('light')) shape = makeLight();
-  else if (item.itemType.includes('electrical_panel')) shape = makePanel();
-  else if (item.itemType === 'wall_partition') shape = makePartition();
-  else if (item.itemType.includes('bathroom')) shape = makeBathroom();
-  else if (item.itemType.includes('air_conditioning')) shape = makeAC();
-  else if (item.itemType.includes('room')) shape = makeRoom();
+  return <div className="h-full w-full rounded border border-slate-400 bg-white" />;
+};
+
+const RulerTicks = ({ amount, vertical = false }: { amount: number; vertical?: boolean }) => {
+  const roundedAmount = Math.max(1, Math.round(amount));
+  const ticks = Array.from({ length: roundedAmount + 1 }, (_, index) => index);
 
   return (
-    <g transform={!isDivision ? `rotate(${rotation} ${cx} ${cy})` : undefined}>
-      {selected ? <rect x={box.x - 7} y={box.y - 7} width={box.width + 14} height={box.height + 14} fill="none" stroke="#f97316" strokeWidth="2.2" strokeDasharray="7 5" rx="4" /> : null}
-      {shape}
-      {!isDivision && <text x={cx} y={box.y - 9} textAnchor="middle" fontSize="12" fontWeight="800" fill="#0f172a">{label}</text>}
-      {!isIncluded && item.price > 0 && (
-        <text x={cx} y={box.y + box.height + 17} textAnchor="middle" fontSize="11" fontWeight="800" fill="#64748b">
-          {formatCurrency(item.price)}
-        </text>
-      )}
-      {isIncluded && (
-        <text x={cx} y={box.y + box.height + 17} textAnchor="middle" fontSize="11" fontWeight="800" fill="#16a34a">
-          Incluido
-        </text>
-      )}
-    </g>
+    <div className={vertical ? 'absolute bottom-[10px] left-0 top-[10px] w-12' : 'absolute left-[10px] right-[10px] top-0 h-10'}>
+      {ticks.map((tick) => {
+        const position = (tick / roundedAmount) * 100;
+        const style = vertical ? { top: `${position}%` } : { left: `${position}%` };
+        return (
+          <div key={tick} className={vertical ? 'absolute left-5 flex items-center gap-1' : 'absolute top-4 flex -translate-x-1/2 flex-col items-center'} style={style}>
+            <span className={vertical ? 'h-px w-3 bg-slate-400' : 'h-3 w-px bg-slate-400'} />
+            <span className="text-[10px] font-bold text-slate-500">{tick}m</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const CadItem = ({
+  item,
+  editable,
+  selected,
+  onSelectItem,
+  onItemPointerDown,
+}: {
+  item: LayoutItem;
+  editable: boolean;
+  selected: boolean;
+  onSelectItem?: (id: string) => void;
+  onItemPointerDown?: (event: React.PointerEvent<HTMLDivElement>, id: string) => void;
+}) => {
+  const rotation = !isDivision(item) ? item.rotation || 0 : 0;
+  const label = labelFor(item.itemType);
+
+  return (
+    <div
+      role={editable ? 'button' : undefined}
+      tabIndex={editable ? 0 : undefined}
+      aria-label={`${label} en el plano`}
+      title={`${label}${item.included ? ' incluido' : item.price ? ` · ${formatCurrency(item.price)}` : ''}`}
+      className={`group absolute select-none ${editable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      style={{
+        left: `${item.x}%`,
+        top: `${item.y}%`,
+        width: `${item.width}%`,
+        height: `${item.height}%`,
+        minWidth: item.itemType === 'wall_partition' ? 12 : 34,
+        minHeight: item.itemType === 'wall_partition' ? 8 : 28,
+        transform: `rotate(${rotation}deg)`,
+        transformOrigin: 'center center',
+        zIndex: selected ? 30 : isDivision(item) ? 18 : 20,
+      }}
+      onPointerDown={editable && onItemPointerDown ? (event) => {
+        event.stopPropagation();
+        onSelectItem?.(item.id);
+        onItemPointerDown(event, item.id);
+      } : undefined}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelectItem?.(item.id);
+      }}
+    >
+      {selected ? <div className="pointer-events-none absolute -inset-2 rounded-md border-2 border-dashed border-orange-500 bg-orange-500/5" /> : null}
+      <CadSymbol item={item} selected={selected} />
+      {selected ? <SelectionHandles /> : null}
+      <span className="pointer-events-none absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-black text-slate-900 opacity-90 shadow-sm ring-1 ring-slate-200">
+        {label}
+      </span>
+      <PriceBadge item={item} />
+      {selected ? (
+        <span className="pointer-events-none absolute left-0 top-[calc(100%+24px)] whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-bold text-white shadow">
+          X {Math.round(item.x)} · Y {Math.round(item.y)}
+        </span>
+      ) : null}
+    </div>
   );
 };
 
@@ -201,78 +269,100 @@ export const LayoutPreview = ({
   zoom?: number;
 }) => {
   const ratio = width > 0 ? length / width : 2.5;
-  const innerWidth = CANVAS_WIDTH - PADDING_X * 2;
-  const innerHeight = innerWidth / ratio;
-  const maxInnerHeight = CANVAS_HEIGHT - 170;
-  const safeHeight = Math.min(innerHeight, maxInnerHeight);
-  const offsetY = (CANVAS_HEIGHT - safeHeight) / 2 + 15;
+  const moduleHeight = Math.max(300, Math.min(500, CAD_STAGE_MIN_WIDTH / ratio));
+  const safeZoom = Math.max(0.8, Math.min(1.5, zoom));
 
   return (
     <div className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h3 className="text-xl font-black text-slate-900">Plano 2D de tu módulo</h3>
-          <p className="text-sm text-slate-600">Coloca puertas, ventanas, tabiques y recintos interiores a lo ancho o a lo largo.</p>
+          <h3 className="text-xl font-black text-slate-900">Plano técnico 2D interactivo</h3>
+          <p className="text-sm text-slate-600">Arrastra elementos sobre una retícula técnica con ajuste automático a pared y divisiones reales.</p>
         </div>
-        <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+        <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm">
           {length} x {width} m
         </div>
       </div>
 
-      <div
-        ref={planeRef}
-        className="relative overflow-auto rounded-[26px] border border-slate-300 bg-white p-2 shadow-sm"
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget || (event.target as SVGElement).tagName === 'svg') onSelectItem?.('');
-        }}
-      >
-        <div className="min-w-[900px] origin-top-left transition-transform duration-150" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: `${100 / zoom}%` }}>
-          <svg viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} className="h-auto w-full">
-            <defs>
-              <marker id="dimArrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto-start-reverse">
-                <path d="M0,0 L7,3.5 L0,7 z" fill="#475569" />
-              </marker>
-              <pattern id="smallGrid" width={GRID_STEP} height={GRID_STEP} patternUnits="userSpaceOnUse">
-                <path d={`M ${GRID_STEP} 0 L 0 0 0 ${GRID_STEP}`} fill="none" stroke="#e2e8f0" strokeWidth="1" />
-              </pattern>
-              <pattern id="bigGrid" width={GRID_STEP * 5} height={GRID_STEP * 5} patternUnits="userSpaceOnUse">
-                <rect width={GRID_STEP * 5} height={GRID_STEP * 5} fill="url(#smallGrid)" />
-                <path d={`M ${GRID_STEP * 5} 0 L 0 0 0 ${GRID_STEP * 5}`} fill="none" stroke="#cbd5e1" strokeWidth="1.4" />
-              </pattern>
-            </defs>
+      <div className="overflow-hidden rounded-[26px] border border-slate-300 bg-slate-950 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs font-bold text-slate-200">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-300">CAD 2D</span>
+            <span className="rounded-full bg-slate-800 px-3 py-1">Retícula {GRID_PERCENT}%</span>
+            <span className="rounded-full bg-slate-800 px-3 py-1">Zoom {Math.round(safeZoom * 100)}%</span>
+          </div>
+          <span className="text-slate-400">Plano orientativo · revisión técnica antes de fabricación</span>
+        </div>
 
-            <rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#ffffff" />
-            <rect x={PADDING_X} y={offsetY} width={innerWidth} height={safeHeight} fill="url(#bigGrid)" />
+        <div className="overflow-auto bg-slate-950 p-4">
+          <div
+            className="origin-top-left transition-transform duration-150"
+            style={{
+              minWidth: CAD_STAGE_MIN_WIDTH + 100,
+              transform: `scale(${safeZoom})`,
+              transformOrigin: 'top left',
+              width: `${100 / safeZoom}%`,
+            }}
+          >
+            <div className="relative rounded-2xl bg-slate-100 p-5 pl-16 pt-12 shadow-inner ring-1 ring-slate-700/10">
+              <RulerTicks amount={length} />
+              <RulerTicks amount={width} vertical />
 
-            <DimensionLine x1={PADDING_X} y1={offsetY - 34} x2={PADDING_X + innerWidth} y2={offsetY - 34} label={`${length} m`} />
-            <DimensionLine x1={PADDING_X - 44} y1={offsetY} x2={PADDING_X - 44} y2={offsetY + safeHeight} label={`${width} m`} vertical />
+              <div className="absolute left-16 right-5 top-10 h-px bg-slate-400" />
+              <div className="absolute bottom-5 left-14 top-12 w-px bg-slate-400" />
 
-            <line x1={PADDING_X} y1={offsetY - 22} x2={PADDING_X} y2={offsetY} stroke="#94a3b8" strokeWidth="1" />
-            <line x1={PADDING_X + innerWidth} y1={offsetY - 22} x2={PADDING_X + innerWidth} y2={offsetY} stroke="#94a3b8" strokeWidth="1" />
-            <line x1={PADDING_X - 28} y1={offsetY} x2={PADDING_X} y2={offsetY} stroke="#94a3b8" strokeWidth="1" />
-            <line x1={PADDING_X - 28} y1={offsetY + safeHeight} x2={PADDING_X} y2={offsetY + safeHeight} stroke="#94a3b8" strokeWidth="1" />
+              <div className="mb-2 flex items-center justify-between pl-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                <span>Vista superior</span>
+                <span>{length} m</span>
+              </div>
 
-            <rect x={PADDING_X} y={offsetY} width={innerWidth} height={safeHeight} fill="none" stroke="#111827" strokeWidth="10" />
-            <text x={PADDING_X + 18} y={offsetY + 30} fontSize="15" fontWeight="900" fill="#334155">Plano orientativo</text>
-
-            {items.map((item) => (
-              <g
-                key={item.id}
-                className={editable ? 'cursor-pointer' : ''}
-                onPointerDown={editable && onItemPointerDown ? (event) => {
-                  event.stopPropagation();
-                  onSelectItem?.(item.id);
-                  onItemPointerDown(event as unknown as React.PointerEvent<HTMLDivElement>, item.id);
-                } : undefined}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelectItem?.(item.id);
-                }}
+              <div
+                className="relative rounded-sm bg-slate-950 shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
+                style={{ height: moduleHeight + WALL_THICKNESS * 2 }}
               >
-                <TechnicalSymbol item={item} selected={selectedItemId === item.id} innerWidth={innerWidth} innerHeight={safeHeight} offsetY={offsetY} />
-              </g>
-            ))}
-          </svg>
+                <div
+                  ref={planeRef}
+                  className={`absolute bg-white ${editable ? 'cursor-crosshair' : ''}`}
+                  style={{
+                    left: WALL_THICKNESS,
+                    right: WALL_THICKNESS,
+                    top: WALL_THICKNESS,
+                    bottom: WALL_THICKNESS,
+                    backgroundColor: '#ffffff',
+                    backgroundImage:
+                      'linear-gradient(rgba(148, 163, 184, 0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.18) 1px, transparent 1px), linear-gradient(rgba(30, 64, 175, 0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(30, 64, 175, 0.18) 1px, transparent 1px)',
+                    backgroundSize: '20px 20px, 20px 20px, 100px 100px, 100px 100px',
+                  }}
+                  onPointerDown={(event) => {
+                    if (event.target === event.currentTarget) onSelectItem?.('');
+                  }}
+                >
+                  <div className="pointer-events-none absolute left-3 top-3 rounded bg-white/85 px-2 py-1 text-[11px] font-black uppercase tracking-wide text-slate-500 shadow-sm ring-1 ring-slate-200">
+                    Plano orientativo
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.04)_1px,transparent_1px)] [background-size:40px_40px]" />
+
+                  {items.map((item) => (
+                    <CadItem
+                      key={item.id}
+                      item={item}
+                      editable={editable}
+                      selected={selectedItemId === item.id}
+                      onSelectItem={onSelectItem}
+                      onItemPointerDown={onItemPointerDown}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-2 text-[11px] font-semibold text-slate-500 sm:grid-cols-3">
+                <span>Escala visual aproximada</span>
+                <span>Elementos arrastrables con ajuste a retícula</span>
+                <span>Puertas y ventanas se acoplan a paredes</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
