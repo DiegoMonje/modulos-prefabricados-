@@ -37,6 +37,8 @@ const uses: UseType[] = ['Caseta de obra', 'Oficina', 'Almacén', 'Vestuario', '
 const timelines: DeliveryTimeline[] = ['Lo antes posible', 'En menos de 1 mes', 'En 1-3 meses', 'Más adelante', 'Solo estoy mirando precios'];
 const catalogOrder: LayoutItemType[] = ['additional_socket', 'additional_door', 'window_80x80', 'large_window', 'wall_partition', 'interior_room', 'full_bathroom', 'air_conditioning'];
 const GRID_SIZE = 2;
+const MIN_ROOM_DEPTH_PERCENT = 16;
+type ResizeHandle = 'bottom' | 'right';
 
 const makeInitialConfig = (): ConfiguratorState => ({
   length: 6,
@@ -74,6 +76,7 @@ const sameLayout = (a: LayoutItem[], b: LayoutItem[]) => JSON.stringify(a) === J
 const snap = (value: number, step = GRID_SIZE) => Math.round(value / step) * step;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const isArchitecturalDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType);
+const isResizableDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom'].includes(item.itemType);
 const applyDivisionOrientation = (item: LayoutItem, orientation: 'transversal' | 'longitudinal'): LayoutItem => {
   if (!isArchitecturalDivision(item)) return item;
   if (item.itemType === 'wall_partition') {
@@ -147,6 +150,7 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [selectedLayoutItemId, setSelectedLayoutItemId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number; initialLayout: LayoutItem[] } | null>(null);
+  const [resizing, setResizing] = useState<{ id: string; edge: ResizeHandle; initialLayout: LayoutItem[] } | null>(null);
   const [undoStack, setUndoStack] = useState<LayoutItem[][]>([]);
   const [redoStack, setRedoStack] = useState<LayoutItem[][]>([]);
   const [planeZoom, setPlaneZoom] = useState(1);
@@ -317,6 +321,63 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
       initialLayout: cloneLayout(config.layoutItems),
     });
   };
+
+  const handleItemResizePointerDown = (event: React.PointerEvent<HTMLElement>, id: string, edge: ResizeHandle) => {
+    const item = config.layoutItems.find((entry) => entry.id === id);
+    if (!item || !isResizableDivision(item)) return;
+    event.stopPropagation();
+    setDragging(null);
+    setSelectedLayoutItemId(id);
+    setResizing({
+      id,
+      edge,
+      initialLayout: cloneLayout(config.layoutItems),
+    });
+  };
+
+  useEffect(() => {
+    if (!resizing) return;
+
+    const move = (event: PointerEvent) => {
+      const plane = planeRef.current;
+      if (!plane) return;
+      const rect = plane.getBoundingClientRect();
+      const pointerX = ((event.clientX - rect.left) / rect.width) * 100;
+      const pointerY = ((event.clientY - rect.top) / rect.height) * 100;
+
+      setConfig((prev) => ({
+        ...prev,
+        layoutItems: prev.layoutItems.map((item) => {
+          if (item.id !== resizing.id || !isResizableDivision(item)) return item;
+          const orientation = item.layoutOrientation || 'transversal';
+
+          if (orientation === 'transversal') {
+            const nextHeight = clamp(snap(pointerY - item.y), MIN_ROOM_DEPTH_PERCENT, 100 - item.y);
+            return { ...item, height: nextHeight };
+          }
+
+          const nextWidth = clamp(snap(pointerX - item.x), MIN_ROOM_DEPTH_PERCENT, 100 - item.x);
+          return { ...item, width: nextWidth };
+        }),
+      }));
+    };
+
+    const up = () => {
+      setResizing((current) => {
+        if (current && !sameLayout(current.initialLayout, config.layoutItems)) {
+          pushUndoSnapshot(current.initialLayout);
+        }
+        return null;
+      });
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [resizing, config.layoutItems]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -590,8 +651,8 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
                         <button onClick={centerView} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue">Centrar</button>
                         <button onClick={() => setPlaneZoom((prev) => Math.max(0.8, Number((prev - 0.1).toFixed(2))))} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue"><ZoomOut size={16} /> Zoom -</button>
                         <button onClick={() => setPlaneZoom((prev) => Math.min(1.5, Number((prev + 0.1).toFixed(2))))} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue"><ZoomIn size={16} /> Zoom +</button>
-                        <button onClick={undoLayoutChange} disabled={!undoStack.length} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue disabled:cursor-not-allowed disabled:opacity-50"><Undo2 size={16} /> Deshacer</button>
-                        <button onClick={redoLayoutChange} disabled={!redoStack.length} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue disabled:cursor-not-allowed disabled:opacity-50"><Redo2 size={16} /> Rehacer</button>
+                        <button disabled={!undoStack.length} onClick={undoLayoutChange} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue disabled:cursor-not-allowed disabled:opacity-40"><Undo2 size={16} /> Deshacer</button>
+                        <button disabled={!redoStack.length} onClick={redoLayoutChange} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue disabled:cursor-not-allowed disabled:opacity-40"><Redo2 size={16} /> Rehacer</button>
                       </div>
                     </div>
 
@@ -622,6 +683,7 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
                       selectedItemId={selectedLayoutItemId}
                       onSelectItem={(id) => setSelectedLayoutItemId(id || null)}
                       onItemPointerDown={handleItemPointerDown}
+                      onItemResizePointerDown={handleItemResizePointerDown}
                     />
 
                     {selectedLayoutItem ? (
@@ -635,6 +697,11 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
                                 <Button type="button" onClick={() => changeLayoutItemOrientation(selectedLayoutItem.id, 'transversal')} variant={selectedLayoutItem.layoutOrientation === 'transversal' ? 'primary' : 'outline'}>A lo ancho</Button>
                                 <Button type="button" onClick={() => changeLayoutItemOrientation(selectedLayoutItem.id, 'longitudinal')} variant={selectedLayoutItem.layoutOrientation === 'longitudinal' ? 'primary' : 'outline'}>A lo largo</Button>
                               </div>
+                            )}
+                            {['interior_room', 'full_bathroom'].includes(selectedLayoutItem.itemType) && (
+                              <p className="mt-3 rounded-xl bg-white/80 p-3 text-xs font-semibold text-slate-700">
+                                Arrastra el tirador naranja de la pared interior para ajustar la anchura del recinto.
+                              </p>
                             )}
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -661,21 +728,44 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
             )}
 
             {step === 5 && (
-              <Step title="Indica la ubicación">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(e) => setConfigValue('province', e.target.value)} placeholder="Sevilla" /></Field>
-                  <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(e) => setConfigValue('city', e.target.value)} placeholder="San José de la Rinconada" /></Field>
-                  <Field label="Código postal"><Input value={config.postalCode} onChange={(e) => setConfigValue('postalCode', e.target.value)} placeholder="41300" /></Field>
+              <Step title="Ubicación y plazo">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(e) => setConfigValue('province', e.target.value)} placeholder="Ej. Sevilla" /></Field>
+                  <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(e) => setConfigValue('city', e.target.value)} placeholder="Ej. San José de la Rinconada" /></Field>
+                  <Field label="Código postal"><Input value={config.postalCode} onChange={(e) => setConfigValue('postalCode', e.target.value)} placeholder="Ej. 41300" /></Field>
+                </div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {timelines.map((timeline) => (
+                    <button key={timeline} onClick={() => setConfigValue('deliveryTimeline', timeline)} className={`rounded-2xl border p-4 text-left font-bold transition ${config.deliveryTimeline === timeline ? 'border-brand-blue bg-blue-50 text-brand-blue' : 'border-slate-200 hover:border-slate-300'}`}>{timeline}</button>
+                  ))}
                 </div>
               </Step>
             )}
 
             {step === 6 && (
-              <Step title="¿Cuándo necesitas tu módulo?">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {timelines.map((timeline) => (
-                    <button key={timeline} onClick={() => setConfigValue('deliveryTimeline', timeline)} className={`rounded-2xl border p-4 text-left font-bold transition ${config.deliveryTimeline === timeline ? 'border-brand-orange bg-orange-50 text-brand-orange' : 'border-slate-200 hover:border-slate-300'}`}>{timeline}</button>
-                  ))}
+              <Step title="Resumen del presupuesto orientativo">
+                <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <h3 className="mb-4 text-lg font-black text-slate-900">Configuración seleccionada</h3>
+                    <div className="space-y-2 text-sm text-slate-700">
+                      <p><strong>Medidas:</strong> {config.length} x {config.width} m ({price.squareMeters} m²)</p>
+                      <p><strong>Panel:</strong> {config.panelType}, {config.panelThickness}, color {config.panelColor}</p>
+                      <p><strong>Uso:</strong> {config.useType}</p>
+                      <p><strong>Ubicación:</strong> {config.city || '-'}, {config.province || '-'}</p>
+                      <p><strong>Plazo:</strong> {config.deliveryTimeline}</p>
+                      <p><strong>Incluido:</strong> {price.summary.includedList.join(', ')}</p>
+                      <p><strong>Extras:</strong> {price.summary.extrasList.length ? price.summary.extrasList.join(', ') : 'Sin extras añadidos'}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
+                    <p className="text-sm font-bold text-orange-700">Precio estimado sin IVA</p>
+                    <p className="mt-2 text-4xl font-black text-brand-orange">{formatCurrency(price.estimatedPriceWithoutVat)}</p>
+                    <p className="mt-2 text-sm text-orange-700">IVA no incluido. El precio final puede variar según transporte, instalación, accesos, personalización y disponibilidad.</p>
+                    <div className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-700">
+                      <p><strong>IVA 21%:</strong> {formatCurrency(price.vatAmount)}</p>
+                      <p><strong>Total con IVA:</strong> {formatCurrency(price.estimatedPriceWithVat)}</p>
+                    </div>
+                  </div>
                 </div>
               </Step>
             )}
@@ -684,18 +774,8 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
               <Step title="Descarga tu plano y presupuesto">
                 <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
                   <div className="rounded-2xl bg-slate-50 p-5">
-                    <h2 className="text-xl font-black text-slate-900">Tu módulo ya está listo</h2>
-                    <p className="mt-2 text-sm text-slate-600">Revisa el plano 2D, las medidas, los elementos incluidos, los extras añadidos y el precio estimado antes de descargar el presupuesto.</p>
-                    <div className="mt-4 space-y-2 text-sm text-slate-700">
-                      <p><strong>Medidas:</strong> {config.length} x {config.width} m ({price.squareMeters} m²)</p>
-                      <p><strong>Panel:</strong> {config.panelType} {config.panelColor} {config.panelThickness}</p>
-                      <p><strong>Configuración base:</strong> {price.summary.includedList.join(', ')}</p>
-                      <p><strong>Extras:</strong> {price.summary.extrasList.length ? price.summary.extrasList.join(', ') : 'Sin extras añadidos'}</p>
-                      <p><strong>Precio estimado sin IVA:</strong> {formatCurrency(price.estimatedPriceWithoutVat)}</p>
-                      <p><strong>IVA 21%:</strong> {formatCurrency(price.vatAmount)}</p>
-                      <p><strong>Total estimado con IVA:</strong> {formatCurrency(price.estimatedPriceWithVat)}</p>
-                    </div>
-                    <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Para descargar el plano y el presupuesto debes dejar tus datos y aceptar la política de privacidad. La suscripción a la newsletter es opcional.</p>
+                    <h3 className="text-xl font-black text-slate-900">Recibe tu plano + presupuesto orientativo</h3>
+                    <p className="mt-2 text-sm text-slate-600">Para descargarlo debes dejar tus datos y aceptar la política de privacidad. La suscripción a la newsletter es opcional.</p>
                     <Button onClick={openDownloadModal} className="mt-5 flex items-center gap-2"><Download size={18} /> Descargar plano + presupuesto</Button>
                     {errors.submit && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errors.submit}</p>}
                   </div>
@@ -724,72 +804,69 @@ export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin:
               <p><strong>Ventanas 80x80 extra:</strong> {price.summary.windows80x80}</p>
               <p><strong>Ventanas grandes:</strong> {price.summary.largeWindows}</p>
               <p><strong>Habitaciones:</strong> {price.summary.interiorRooms}</p>
-              <p><strong>Baño:</strong> {price.summary.hasFullBathroom ? 'Sí' : 'No'}</p>
+              <p><strong>Baño completo:</strong> {price.summary.hasFullBathroom ? 'Sí' : 'No'}</p>
               <p><strong>Aire acondicionado:</strong> {price.summary.hasAirConditioning ? 'Sí' : 'No'}</p>
             </div>
             <div className="mt-5 rounded-2xl bg-orange-50 p-4">
-              <p className="text-sm font-semibold text-orange-700">Precio estimado sin IVA</p>
-              <p className="mt-1 text-3xl font-black text-brand-orange">{formatCurrency(price.estimatedPriceWithoutVat)}</p>
-              <p className="mt-1 text-sm text-orange-700">IVA no incluido</p>
-              <div className="mt-3 border-t border-orange-100 pt-3 text-sm text-orange-800">
-                <p>Precio base: {formatCurrency(price.basePrice)}</p>
-                <p>Extras: {formatCurrency(price.extrasPrice)}</p>
-                <p>IVA 21%: {formatCurrency(price.vatAmount)}</p>
-                <p className="font-bold">Total con IVA: {formatCurrency(price.estimatedPriceWithVat)}</p>
-              </div>
+              <p className="text-sm font-bold text-orange-700">Estimación sin IVA</p>
+              <p className="text-3xl font-black text-brand-orange">{formatCurrency(price.estimatedPriceWithoutVat)}</p>
+              <p className="mt-2 text-xs text-orange-700">IVA no incluido</p>
             </div>
-            <p className="mt-4 text-xs text-slate-500">El precio mostrado es estimado y no incluye IVA. El presupuesto final puede variar según transporte, montaje, distribución interior, acabados y revisión técnica.</p>
-            {(config.isSpecialMeasure || config.isSpecialPanel) && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Esta configuración requiere revisión personalizada para confirmar disponibilidad, transporte, montaje, precio y plazo final.</p>}
+            <div className="mt-5 flex gap-2 text-xs text-slate-500"><Focus size={16} /> Precio orientativo sujeto a revisión técnica.</div>
           </Card>
         </div>
+      </div>
 
-        {showDownloadModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
-            <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900">Recibe tu plano y presupuesto orientativo</h2>
-                  <p className="mt-2 text-sm text-slate-600">Déjanos tus datos y podrás descargar tu plano junto con el presupuesto estimado de tu módulo. También podrás recibir ideas, novedades y ofertas sobre casetas prefabricadas si aceptas suscribirte.</p>
-                </div>
-                <button onClick={() => setShowDownloadModal(false)} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar"><X size={20} /></button>
+      {showDownloadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-auto rounded-[28px] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.18em] text-brand-orange">Descarga personalizada</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">Recibe tu plano y presupuesto orientativo</h2>
+                <p className="mt-2 text-sm text-slate-600">Guardaremos tu solicitud para poder contactarte y preparar una propuesta final.</p>
               </div>
+              <button onClick={() => setShowDownloadModal(false)} className="rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200"><X size={18} /></button>
+            </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Nombre completo" error={errors.fullName}><Input value={contact.fullName} onChange={(e) => setContactValue('fullName', e.target.value)} /></Field>
-                <Field label="Email" error={errors.email}><Input type="email" value={contact.email} onChange={(e) => setContactValue('email', e.target.value)} /></Field>
-                <Field label="Teléfono" error={errors.phone}><Input value={contact.phone} onChange={(e) => setContactValue('phone', e.target.value)} /></Field>
-                <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(e) => setConfigValue('province', e.target.value)} /></Field>
-                <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(e) => setConfigValue('city', e.target.value)} /></Field>
-                <Field label="Comentario opcional"><Input value={contact.comments} onChange={(e) => setContactValue('comments', e.target.value)} placeholder="Ej. Quiero entrega rápida" /></Field>
-              </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <Field label="Nombre completo" error={errors.fullName}><Input value={contact.fullName} onChange={(e) => setContactValue('fullName', e.target.value)} placeholder="Tu nombre" /></Field>
+              <Field label="Teléfono" error={errors.phone}><Input value={contact.phone} onChange={(e) => setContactValue('phone', e.target.value)} placeholder="600 000 000" /></Field>
+              <Field label="Email" error={errors.email}><Input value={contact.email} onChange={(e) => setContactValue('email', e.target.value)} placeholder="tu@email.com" /></Field>
+              <Field label="Uso previsto"><Input value={contact.intendedUse} onChange={(e) => setContactValue('intendedUse', e.target.value)} placeholder="Ej. oficina, finca..." /></Field>
+              <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(e) => setConfigValue('province', e.target.value)} placeholder="Provincia" /></Field>
+              <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(e) => setConfigValue('city', e.target.value)} placeholder="Localidad" /></Field>
+            </div>
+            <div className="mt-4"><Field label="Comentarios"><textarea value={contact.comments} onChange={(e) => setContactValue('comments', e.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-blue-100" placeholder="Cuéntanos detalles de tu proyecto..." /></Field></div>
 
-              <div className="mt-5 space-y-4">
-                <label className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
-                  <input type="checkbox" checked={contact.accepted} onChange={(e) => setContactValue('accepted', e.target.checked)} className="mt-1" />
-                  <span>Acepto la política de privacidad y que Módulos Prefabricados San José S.L. trate mis datos para enviarme el plano y presupuesto solicitado.</span>
-                </label>
-                {errors.accepted && <p className="text-sm text-red-600">{errors.accepted}</p>}
+            <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+              <label className="flex gap-3"><input type="checkbox" checked={contact.accepted} onChange={(e) => setContactValue('accepted', e.target.checked)} /> <span>Acepto la política de privacidad y que Módulos Prefabricados San José S.L. contacte conmigo sobre esta solicitud.</span></label>
+              {errors.accepted && <p className="text-red-600">{errors.accepted}</p>}
+              <label className="flex gap-3"><input type="checkbox" checked={contact.newsletterSubscribed} onChange={(e) => setContactValue('newsletterSubscribed', e.target.checked)} /> <span>Quiero recibir novedades, ofertas y consejos sobre módulos prefabricados.</span></label>
+            </div>
 
-                <label className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
-                  <input type="checkbox" checked={contact.newsletterSubscribed} onChange={(e) => setContactValue('newsletterSubscribed', e.target.checked)} className="mt-1" />
-                  <span>Acepto recibir comunicaciones comerciales, novedades y ofertas de Módulos Prefabricados San José S.L.</span>
-                </label>
-              </div>
-
-              <p className="mt-5 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">Responsable: Módulos Prefabricados San José S.L. Finalidad: gestionar tu solicitud de presupuesto y, si lo aceptas, enviarte comunicaciones comerciales. Puedes solicitar la baja o ejercer tus derechos escribiendo a contacto@modulosprefabricadossanjose.com.</p>
-              {errors.submit && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errors.submit}</p>}
-
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <Button variant="outline" onClick={() => setShowDownloadModal(false)}>Cancelar</Button>
-                <Button onClick={submit} disabled={isSubmitting} className="flex items-center justify-center gap-2"><Download size={18} /> {isSubmitting ? 'Generando...' : 'Enviar y descargar presupuesto'}</Button>
-              </div>
+            {errors.submit && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errors.submit}</p>}
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setShowDownloadModal(false)}>Cancelar</Button>
+              <Button onClick={submit} disabled={isSubmitting} className="flex items-center gap-2"><Download size={18} /> {isSubmitting ? 'Generando...' : 'Descargar PDF'}</Button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const Step = ({ title, children }: { title: string; children: React.ReactNode }) => <div><h1 className="mb-6 text-2xl font-black text-slate-900 md:text-3xl">{title}</h1>{children}</div>;
-const InfoPill = ({ label, value }: { label: string; value: string }) => <div className="rounded-2xl bg-slate-50 p-4 text-center"><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="mt-1 text-lg font-black text-slate-900">{value}</p></div>;
+const Step = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <div>
+    <h2 className="mb-5 text-2xl font-black text-slate-900">{title}</h2>
+    {children}
+  </div>
+);
+
+const InfoPill = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-2xl bg-slate-100 p-4">
+    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+    <p className="mt-1 text-lg font-black text-slate-900">{value}</p>
+  </div>
+);
