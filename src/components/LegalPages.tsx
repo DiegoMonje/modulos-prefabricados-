@@ -1,4 +1,5 @@
-import { ArrowLeft, Building2, Cookie, FileText, ShieldCheck } from 'lucide-react';
+import type React from 'react';
+import { ArrowLeft, Cookie, FileText, ShieldCheck } from 'lucide-react';
 import { Button, Card } from './Ui';
 
 export type LegalPageType = 'aviso-legal' | 'privacidad' | 'cookies';
