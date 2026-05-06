@@ -4,9 +4,19 @@ import { formatCurrency } from '../utils/pricing';
 
 const WALL_THICKNESS = 10;
 const GRID_PERCENT = 2;
-const CAD_STAGE_MIN_WIDTH = 980;
+const CAD_MODULE_WIDTH = 980;
+const CAD_STAGE_PADDING_WIDTH = 84;
+
+type ResizeHandle = 'bottom' | 'right';
 
 const isDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType);
+const isResizableDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom'].includes(item.itemType);
+
+const formatMeters = (value: number) =>
+  value.toLocaleString('es-ES', {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
+    maximumFractionDigits: 2,
+  });
 
 const labelFor = (type: LayoutItemType) => {
   if (type === 'base_door' || type === 'additional_door') return 'Puerta';
@@ -30,6 +40,12 @@ const symbolColorFor = (type: LayoutItemType) => {
   if (type.includes('socket')) return '#334155';
   if (type.includes('room') || type.includes('partition')) return '#111827';
   return '#0f172a';
+};
+
+const realDepthFor = (item: LayoutItem, moduleLength: number, moduleWidth: number) => {
+  const orientation = item.layoutOrientation || 'transversal';
+  if (orientation === 'longitudinal') return (item.width / 100) * moduleLength;
+  return (item.height / 100) * moduleWidth;
 };
 
 const PriceBadge = ({ item }: { item: LayoutItem }) => {
@@ -165,19 +181,32 @@ const CadSymbol = ({ item, selected }: { item: LayoutItem; selected: boolean }) 
   return <div className="h-full w-full rounded border border-slate-400 bg-white" />;
 };
 
+const buildTicks = (amount: number) => {
+  const safeAmount = Math.max(amount, 0.1);
+  const wholeMeters = Math.floor(safeAmount);
+  const ticks = Array.from({ length: wholeMeters + 1 }, (_, index) => index);
+  const lastTick = ticks[ticks.length - 1] ?? 0;
+
+  if (Math.abs(safeAmount - lastTick) > 0.01) {
+    ticks.push(Number(safeAmount.toFixed(2)));
+  }
+
+  return ticks;
+};
+
 const RulerTicks = ({ amount, vertical = false }: { amount: number; vertical?: boolean }) => {
-  const roundedAmount = Math.max(1, Math.round(amount));
-  const ticks = Array.from({ length: roundedAmount + 1 }, (_, index) => index);
+  const safeAmount = Math.max(amount, 0.1);
+  const ticks = buildTicks(safeAmount);
 
   return (
-    <div className={vertical ? 'absolute bottom-[10px] left-0 top-[10px] w-12' : 'absolute left-[10px] right-[10px] top-0 h-10'}>
+    <div className={vertical ? 'absolute bottom-[10px] left-0 top-[10px] w-14' : 'absolute left-[10px] right-[10px] top-0 h-10'}>
       {ticks.map((tick) => {
-        const position = (tick / roundedAmount) * 100;
+        const position = Math.min(100, Math.max(0, (tick / safeAmount) * 100));
         const style = vertical ? { top: `${position}%` } : { left: `${position}%` };
         return (
-          <div key={tick} className={vertical ? 'absolute left-5 flex items-center gap-1' : 'absolute top-4 flex -translate-x-1/2 flex-col items-center'} style={style}>
+          <div key={`${vertical ? 'v' : 'h'}-${tick}`} className={vertical ? 'absolute left-4 flex items-center gap-1' : 'absolute top-4 flex -translate-x-1/2 flex-col items-center'} style={style}>
             <span className={vertical ? 'h-px w-3 bg-slate-400' : 'h-3 w-px bg-slate-400'} />
-            <span className="text-[10px] font-bold text-slate-500">{tick}m</span>
+            <span className="whitespace-nowrap text-[10px] font-bold text-slate-500">{formatMeters(tick)}m</span>
           </div>
         );
       })}
@@ -185,21 +214,68 @@ const RulerTicks = ({ amount, vertical = false }: { amount: number; vertical?: b
   );
 };
 
+const ResizeWallHandle = ({
+  edge,
+  depthMeters,
+  onPointerDown,
+}: {
+  edge: ResizeHandle;
+  depthMeters: number;
+  onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+}) => {
+  const label = `Ancho ${formatMeters(depthMeters)} m`;
+
+  if (edge === 'right') {
+    return (
+      <button
+        type="button"
+        aria-label="Arrastrar pared interior para ajustar anchura"
+        className="absolute left-full top-1/2 z-50 flex -translate-y-1/2 translate-x-1 items-center gap-1 rounded-full border border-orange-300 bg-orange-500 px-2 py-1 text-[10px] font-black text-white shadow-lg cursor-ew-resize"
+        onPointerDown={onPointerDown}
+      >
+        <span className="h-7 w-1 rounded-full bg-white/90" />
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label="Arrastrar pared interior para ajustar anchura"
+      className="absolute left-1/2 top-full z-50 flex -translate-x-1/2 translate-y-1 items-center gap-1 rounded-full border border-orange-300 bg-orange-500 px-2 py-1 text-[10px] font-black text-white shadow-lg cursor-ns-resize"
+      onPointerDown={onPointerDown}
+    >
+      <span className="h-1 w-8 rounded-full bg-white/90" />
+      {label}
+    </button>
+  );
+};
+
 const CadItem = ({
   item,
   editable,
   selected,
+  moduleLength,
+  moduleWidth,
   onSelectItem,
   onItemPointerDown,
+  onItemResizePointerDown,
 }: {
   item: LayoutItem;
   editable: boolean;
   selected: boolean;
+  moduleLength: number;
+  moduleWidth: number;
   onSelectItem?: (id: string) => void;
   onItemPointerDown?: (event: React.PointerEvent<HTMLDivElement>, id: string) => void;
+  onItemResizePointerDown?: (event: React.PointerEvent<HTMLButtonElement>, id: string, edge: ResizeHandle) => void;
 }) => {
   const rotation = !isDivision(item) ? item.rotation || 0 : 0;
   const label = labelFor(item.itemType);
+  const resizeEdge: ResizeHandle = (item.layoutOrientation || 'transversal') === 'longitudinal' ? 'right' : 'bottom';
+  const canResize = editable && selected && isResizableDivision(item);
+  const depthMeters = realDepthFor(item, moduleLength, moduleWidth);
 
   return (
     <div
@@ -236,9 +312,21 @@ const CadItem = ({
         {label}
       </span>
       <PriceBadge item={item} />
+      {canResize ? (
+        <ResizeWallHandle
+          edge={resizeEdge}
+          depthMeters={depthMeters}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSelectItem?.(item.id);
+            onItemResizePointerDown?.(event, item.id, resizeEdge);
+          }}
+        />
+      ) : null}
       {selected ? (
         <span className="pointer-events-none absolute left-0 top-[calc(100%+24px)] whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-bold text-white shadow">
-          X {Math.round(item.x)} · Y {Math.round(item.y)}
+          X {Math.round(item.x)} · Y {Math.round(item.y)}{isResizableDivision(item) ? ` · ancho ${formatMeters(depthMeters)} m` : ''}
         </span>
       ) : null}
     </div>
@@ -253,6 +341,7 @@ export const LayoutPreview = ({
   selectedItemId,
   onSelectItem,
   onItemPointerDown,
+  onItemResizePointerDown,
   planeRef,
   zoom = 1,
 }: {
@@ -263,13 +352,13 @@ export const LayoutPreview = ({
   selectedItemId?: string | null;
   onSelectItem?: (id: string) => void;
   onItemPointerDown?: (event: React.PointerEvent<HTMLDivElement>, id: string) => void;
+  onItemResizePointerDown?: (event: React.PointerEvent<HTMLButtonElement>, id: string, edge: ResizeHandle) => void;
   onRemove?: (id: string) => void;
   onRotate?: (id: string) => void;
   planeRef?: React.RefObject<HTMLDivElement | null>;
   zoom?: number;
 }) => {
-  const ratio = width > 0 ? length / width : 2.5;
-  const moduleHeight = Math.max(300, Math.min(500, CAD_STAGE_MIN_WIDTH / ratio));
+  const moduleHeight = Math.max(220, CAD_MODULE_WIDTH * (width / Math.max(length, 0.1)));
   const safeZoom = Math.max(0.8, Math.min(1.5, zoom));
 
   return (
@@ -277,10 +366,10 @@ export const LayoutPreview = ({
       <div className="flex items-end justify-between gap-3">
         <div>
           <h3 className="text-xl font-black text-slate-900">Plano técnico 2D interactivo</h3>
-          <p className="text-sm text-slate-600">Arrastra elementos sobre una retícula técnica con ajuste automático a pared y divisiones reales.</p>
+          <p className="text-sm text-slate-600">Arrastra elementos sobre una retícula técnica con medidas reales de largo y ancho.</p>
         </div>
         <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm">
-          {length} x {width} m
+          {formatMeters(length)} x {formatMeters(width)} m
         </div>
       </div>
 
@@ -288,6 +377,7 @@ export const LayoutPreview = ({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs font-bold text-slate-200">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-300">CAD 2D</span>
+            <span className="rounded-full bg-slate-800 px-3 py-1">Escala real {formatMeters(length)} x {formatMeters(width)} m</span>
             <span className="rounded-full bg-slate-800 px-3 py-1">Retícula {GRID_PERCENT}%</span>
             <span className="rounded-full bg-slate-800 px-3 py-1">Zoom {Math.round(safeZoom * 100)}%</span>
           </div>
@@ -298,13 +388,15 @@ export const LayoutPreview = ({
           <div
             className="origin-top-left transition-transform duration-150"
             style={{
-              minWidth: CAD_STAGE_MIN_WIDTH + 100,
+              width: CAD_MODULE_WIDTH + CAD_STAGE_PADDING_WIDTH,
               transform: `scale(${safeZoom})`,
               transformOrigin: 'top left',
-              width: `${100 / safeZoom}%`,
             }}
           >
-            <div className="relative rounded-2xl bg-slate-100 p-5 pl-16 pt-12 shadow-inner ring-1 ring-slate-700/10">
+            <div
+              className="relative rounded-2xl bg-slate-100 p-5 pl-16 pt-12 shadow-inner ring-1 ring-slate-700/10"
+              style={{ width: CAD_MODULE_WIDTH + CAD_STAGE_PADDING_WIDTH }}
+            >
               <RulerTicks amount={length} />
               <RulerTicks amount={width} vertical />
 
@@ -313,7 +405,7 @@ export const LayoutPreview = ({
 
               <div className="mb-2 flex items-center justify-between pl-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
                 <span>Vista superior</span>
-                <span>{length} m</span>
+                <span>Largo real: {formatMeters(length)} m</span>
               </div>
 
               <div
@@ -338,7 +430,7 @@ export const LayoutPreview = ({
                   }}
                 >
                   <div className="pointer-events-none absolute left-3 top-3 rounded bg-white/85 px-2 py-1 text-[11px] font-black uppercase tracking-wide text-slate-500 shadow-sm ring-1 ring-slate-200">
-                    Plano orientativo
+                    Ancho real: {formatMeters(width)} m
                   </div>
 
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.04)_1px,transparent_1px)] [background-size:40px_40px]" />
@@ -349,16 +441,19 @@ export const LayoutPreview = ({
                       item={item}
                       editable={editable}
                       selected={selectedItemId === item.id}
+                      moduleLength={length}
+                      moduleWidth={width}
                       onSelectItem={onSelectItem}
                       onItemPointerDown={onItemPointerDown}
+                      onItemResizePointerDown={onItemResizePointerDown}
                     />
                   ))}
                 </div>
               </div>
 
               <div className="mt-3 grid gap-2 text-[11px] font-semibold text-slate-500 sm:grid-cols-3">
-                <span>Escala visual aproximada</span>
-                <span>Elementos arrastrables con ajuste a retícula</span>
+                <span>Escala visual proporcional al ancho real</span>
+                <span>Habitaciones y baños: pared interior deslizable</span>
                 <span>Puertas y ventanas se acoplan a paredes</span>
               </div>
             </div>
