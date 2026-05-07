@@ -6,8 +6,11 @@ export const REFERENCE_BASE_PRICE = 4750;
 export const REFERENCE_SQUARE_METERS = REFERENCE_LENGTH * REFERENCE_WIDTH;
 export const REFERENCE_PRICE_PER_M2 = REFERENCE_BASE_PRICE / REFERENCE_SQUARE_METERS;
 export const ORIENTATIVE_PRICE_PER_M2 = REFERENCE_PRICE_PER_M2;
-export const SHORT_MODULE_SURCHARGE_RATE = 0.10;
-export const SHORT_MODULE_LENGTHS = [3, 4, 5];
+export const SHORT_MODULE_SURCHARGE_BY_LENGTH: Record<number, number> = {
+  3: 0.20,
+  4: 0.10,
+  5: 0.10,
+};
 export const VAT_RATE = 0.21;
 
 export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price: number; width: number; height: number; zone: 'edge' | 'inside'; included?: boolean }> = {
@@ -45,17 +48,21 @@ const isReferenceModule = (config: ConfiguratorState) =>
   Math.abs(config.length - REFERENCE_LENGTH) < 0.01 &&
   Math.abs(config.width - REFERENCE_WIDTH) < 0.01;
 
-const hasShortModuleSurcharge = (length: number) =>
-  SHORT_MODULE_LENGTHS.some((shortLength) => Math.abs(length - shortLength) < 0.01);
+const getShortModuleSurchargeRate = (length: number) => {
+  const matchedLength = Object.keys(SHORT_MODULE_SURCHARGE_BY_LENGTH)
+    .map(Number)
+    .find((shortLength) => Math.abs(length - shortLength) < 0.01);
+
+  return matchedLength ? SHORT_MODULE_SURCHARGE_BY_LENGTH[matchedLength] : 0;
+};
 
 export const calculateBasePrice = (config: Pick<ConfiguratorState, 'length' | 'width'>): number => {
   const squareMeters = Number((config.length * config.width).toFixed(2));
   if (isReferenceModule(config as ConfiguratorState)) return REFERENCE_BASE_PRICE;
 
   const proportionalBase = squareMeters * REFERENCE_PRICE_PER_M2;
-  const adjustedBase = hasShortModuleSurcharge(config.length)
-    ? proportionalBase * (1 + SHORT_MODULE_SURCHARGE_RATE)
-    : proportionalBase;
+  const surchargeRate = getShortModuleSurchargeRate(config.length);
+  const adjustedBase = proportionalBase * (1 + surchargeRate);
 
   return Math.round(adjustedBase);
 };
