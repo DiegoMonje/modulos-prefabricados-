@@ -117,3 +117,50 @@ input, select, textarea {
     display: none !important;
   }
 }
+
+@media (max-width: 950px) and (orientation: landscape) {
+  div[class*="overflow-auto"][class*="bg-slate-950"][class*="p-4"] {
+    max-height: calc(100dvh - 92px) !important;
+    overflow: hidden !important;
+    padding: 6px !important;
+  }
+
+  div[class*="origin-top-left"][class*="transition-transform"][style*="width"] {
+    transform-origin: top left !important;
+  }
+
+  div[class*="origin-top-left"][class*="transition-transform"] > div[class*="relative"][class*="bg-slate-900"][style*="width"] {
+    border-radius: 14px !important;
+    padding: 42px 14px 14px 58px !important;
+  }
+}
+
+@media (max-width: 740px) and (orientation: landscape) {
+  div[class*="origin-top-left"][class*="transition-transform"][style*="width"] {
+    transform: scale(0.54) !important;
+  }
+
+  div[class*="overflow-auto"][class*="bg-slate-950"][class*="p-4"] {
+    min-height: 310px !important;
+  }
+}
+
+@media (min-width: 741px) and (max-width: 850px) and (orientation: landscape) {
+  div[class*="origin-top-left"][class*="transition-transform"][style*="width"] {
+    transform: scale(0.62) !important;
+  }
+
+  div[class*="overflow-auto"][class*="bg-slate-950"][class*="p-4"] {
+    min-height: 345px !important;
+  }
+}
+
+@media (min-width: 851px) and (max-width: 950px) and (orientation: landscape) {
+  div[class*="origin-top-left"][class*="transition-transform"][style*="width"] {
+    transform: scale(0.72) !important;
+  }
+
+  div[class*="overflow-auto"][class*="bg-slate-950"][class*="p-4"] {
+    min-height: 395px !important;
+  }
+}
