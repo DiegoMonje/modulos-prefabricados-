@@ -14,6 +14,7 @@ interface ChatMessage {
 const companyWhatsapp = '34600227252';
 const whatsappGeneralText = 'Hola, estoy viendo la calculadora de casetas prefabricadas y tengo una duda. Me gustaría recibir información.';
 const whatsappPhotosText = 'Hola, estoy interesado en una caseta prefabricada. Quiero enviar fotos/vídeos del acceso a mi parcela y de la zona donde iría colocada para que podáis valorar transporte y descarga.';
+const whatsappLicenseText = 'Hola, estoy interesado en un módulo prefabricado y tengo dudas sobre uso, permisos o licencia. Me gustaría recibir orientación antes de avanzar.';
 
 const buildWhatsappUrl = (message: string) => `https://wa.me/${companyWhatsapp}?text=${encodeURIComponent(message)}`;
 
@@ -24,6 +25,8 @@ const answers = {
     'El módulo de referencia 6 x 2,40 m parte de 4.750 € sin IVA. Incluye 1 puerta, 1 ventana 80x80 e instalación eléctrica básica: 1 enchufe, 1 interruptor, 1 punto de luz y cuadro eléctrico. El IVA se calcula aparte en el presupuesto.',
   shortPrice:
     'El módulo 3 x 2,40 m parte de 2.850 € sin IVA. Ese precio ya tiene en cuenta que los módulos pequeños llevan más coste proporcional. Incluye 1 puerta, 1 ventana 80x80 e instalación eléctrica básica.',
+  finalPrice:
+    'El precio que muestra la calculadora no es definitivo: es una estimación orientativa sin IVA. El presupuesto final se revisa según medidas, distribución interior, extras, panel elegido, transporte, acceso, descarga y condiciones reales de colocación.',
   measures:
     'Trabajamos largos habituales de 3, 4, 5, 6, 7 y 8 m. Los anchos más usados son 2,40 m y 2,50 m. El modelo más solicitado es 6 x 2,40 m. Medidas especiales se revisan bajo consulta.',
   includes:
@@ -48,16 +51,30 @@ const answers = {
     'El módulo base incluye una puerta. Cada puerta adicional tiene un precio orientativo de 120 € sin IVA. Las puertas incluidas en habitación o baño no se cobran aparte.',
   budget:
     'Puedes usar la calculadora para configurar medidas, panel, extras y plano 2D. Al descargar, se genera un presupuesto/proforma orientativa con base imponible, IVA 21% y total. El presupuesto final se revisa según transporte, acceso, distribución y acabados.',
+  timeline:
+    'El plazo de entrega depende de la carga de trabajo, medidas, extras, disponibilidad de materiales, transporte y ubicación. Para darte una fecha real necesitamos revisar el modelo, la distribución y la zona de entrega.',
+  reservation:
+    'Podemos revisar tu caso y explicarte las condiciones disponibles para avanzar con el pedido. Lo mejor es que nos indiques medidas, provincia, uso previsto y si necesitas transporte para orientarte bien.',
   transport:
     'El transporte no está incluido en el precio del módulo. Trabajamos con transportistas externos y el coste depende de distancia, ubicación, acceso y tipo de descarga. En zonas cercanas puede partir desde unos 250 €, pero debe confirmarse según dirección exacta y condiciones del acceso.',
   access:
     'Antes de confirmar transporte hay que revisar el acceso: anchura del camino, curvas, pendientes, árboles, cables, muros, cancela y zona de descarga. Lo ideal es enviar fotos o vídeos de la entrada, camino interior y punto donde irá colocada la caseta.',
+  truckFit:
+    'Si no sabes si puede entrar el camión, podemos revisarlo con fotos o vídeos. Necesitamos ver la entrada, anchura de la cancela, camino de acceso, curvas, pendientes, cables, árboles, muros y la zona donde se colocaría el módulo.',
   unloading:
     'La descarga depende del transportista y del acceso. Hay que confirmar si el camión puede entrar, maniobrar y dejar el módulo cerca del punto de instalación. Si hay poco espacio, pendiente, cables, árboles o cancela estrecha, se revisa antes de confirmar.',
   installation:
     'No realizamos instalación de obra en la parcela. La caseta se entrega como módulo prefabricado y el terreno debe estar preparado antes de la entrega. La base debe estar firme y nivelada.',
   terrain:
     'Lo ideal es una solera/base de hormigón nivelada. Si el terreno es de tierra o grava, recomendamos vigas transversales a lo largo del módulo para que apoye correctamente. Una base mal nivelada puede afectar a puertas, estructura y estabilidad.',
+  unevenTerrain:
+    'Si el terreno no está nivelado, es importante prepararlo antes de la entrega. Una base desnivelada puede afectar al apoyo del módulo, apertura de puertas, estabilidad y acabado final. Recomendamos solera nivelada o puntos de apoyo bien alineados.',
+  ready:
+    'Antes de recibir la caseta conviene tener preparada una base firme y nivelada, revisar el acceso para el camión y dejar despejada la zona de descarga. También es recomendable enviar fotos o vídeo del acceso para evitar problemas el día de la entrega.',
+  license:
+    'La necesidad de licencia depende del municipio, tipo de terreno, uso previsto, dimensiones y si el módulo se considera instalación temporal o permanente. Recomendamos consultarlo con el ayuntamiento o con un técnico local antes de confirmar el pedido.',
+  housing:
+    'Nuestros productos son casetas y módulos prefabricados. El uso como vivienda, instalación permanente o uso residencial depende de la normativa municipal y del terreno. Antes de comprar, conviene consultarlo con el ayuntamiento.',
   combined:
     'El precio del módulo no incluye transporte ni instalación de obra. El transporte se valora con transportistas externos según distancia y acceso. El terreno debe estar preparado, preferiblemente con base de hormigón nivelada o vigas de apoyo si es tierra/grava. Para revisarlo bien, envíanos fotos o vídeo del acceso y zona de colocación.',
   contact:
@@ -67,17 +84,26 @@ const answers = {
 };
 
 const primaryQuickQuestions = [
+  '¿El precio es final?',
   'Precio 6 x 2,40',
   'Precio 3 x 2,40',
   'Qué incluye',
-  'Habitación interior',
   'Baño completo',
-  'Transporte',
-  'Acceso parcela',
-  'Preparar terreno',
+  'Habitación interior',
+  '¿Cabe el camión?',
+  '¿Necesito licencia?',
 ];
 
-const secondaryQuickQuestions = ['IVA', 'Enchufes', 'Ventanas', 'Puertas', 'Panel sándwich', 'Pedir presupuesto'];
+const secondaryQuickQuestions = [
+  'Preparar terreno',
+  'Terreno desnivelado',
+  '¿Sirve como vivienda?',
+  'Plazo de entrega',
+  'Reservar pedido',
+  'IVA',
+  'Enchufes',
+  'Pedir presupuesto',
+];
 
 const normalize = (value: string) =>
   value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -87,8 +113,36 @@ const includesAny = (text: string, keywords: string[]) => keywords.some((keyword
 const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta } => {
   const q = normalize(rawQuestion);
 
+  if (includesAny(q, ['precio final', 'es final', 'definitivo', 'precio definitivo', 'presupuesto final', 'es el precio real', 'precio real', 'el precio que sale'])) {
+    return { text: answers.finalPrice, cta: 'calculator' };
+  }
+
   if (includesAny(q, ['llevais y la instalais', 'llevais e instalais', 'incluye transporte y montaje', 'transporte y montaje', 'colocais vosotros', 'la colocais', 'que necesito para ponerla', 'ponerla en mi parcela'])) {
     return { text: answers.combined, cta: 'photos' };
+  }
+
+  if (includesAny(q, ['que necesito tener preparado', 'tener preparado', 'antes de recibir', 'antes de la entrega', 'preparado antes', 'recibir la caseta', 'entregar la caseta'])) {
+    return { text: answers.ready, cta: 'photos' };
+  }
+
+  if (includesAny(q, ['cabe el camion', 'entra el camion', 'si entra el camion', 'camion cabe', 'camion entra', 'no se si entra', 'camion en mi parcela'])) {
+    return { text: answers.truckFit, cta: 'photos' };
+  }
+
+  if (includesAny(q, ['licencia', 'permiso', 'permisos', 'ayuntamiento', 'legal', 'legalidad', 'normativa'])) {
+    return { text: answers.license, cta: 'whatsapp' };
+  }
+
+  if (includesAny(q, ['vivienda', 'vivir', 'casa', 'residencial', 'habitable', 'vivir en una caseta', 'vivir en un modulo'])) {
+    return { text: answers.housing, cta: 'whatsapp' };
+  }
+
+  if (includesAny(q, ['plazo', 'tarda', 'tardais', 'entrega', 'cuando estaria', 'cuanto tarda', 'fecha de entrega', 'tiempo de entrega'])) {
+    return { text: answers.timeline, cta: 'whatsapp' };
+  }
+
+  if (includesAny(q, ['reservar', 'reserva', 'financiar', 'financiacion', 'pago', 'señal', 'senal', 'condiciones'])) {
+    return { text: answers.reservation, cta: 'whatsapp' };
   }
 
   if (includesAny(q, ['3x2', '3 x 2', '3x2,40', '3 x 2,40', '3x2.40', 'modulo de 3', '3 metros', '2850'])) {
@@ -113,7 +167,7 @@ const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta } => {
     return { text: answers.access, cta: 'photos' };
   }
 
-  if (includesAny(q, ['transporte', 'envio', 'llevar', 'entrega', 'distancia', 'transportista', 'portes', 'porte', 'desplazamiento', 'coste transporte'])) {
+  if (includesAny(q, ['transporte', 'envio', 'llevar', 'distancia', 'transportista', 'portes', 'porte', 'desplazamiento', 'coste transporte'])) {
     return { text: answers.transport, cta: 'photos' };
   }
 
@@ -123,6 +177,10 @@ const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta } => {
 
   if (includesAny(q, ['instalacion', 'instalar', 'montaje', 'montar', 'colocar', 'colocacion', 'obra', 'preparar terreno'])) {
     return { text: answers.installation, cta: 'photos' };
+  }
+
+  if (includesAny(q, ['desnivelado', 'sin nivelar', 'no esta nivelado', 'no está nivelado', 'terreno inclinado', 'inclinacion', 'inclinación'])) {
+    return { text: answers.unevenTerrain, cta: 'photos' };
   }
 
   if (includesAny(q, ['terreno', 'base', 'hormigon', 'nivelado', 'nivelar', 'suelo', 'tierra', 'grava', 'vigas', 'apoyo', 'cimentacion', 'solera'])) {
@@ -161,7 +219,7 @@ const ChatCtaButton = ({ cta, onStartConfigurator }: { cta: ChatCta; onStartConf
   }
 
   return (
-    <a href={buildWhatsappUrl(whatsappGeneralText)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-green px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700">
+    <a href={buildWhatsappUrl(whatsappLicenseText)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-green px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700">
       <MessageCircle size={16} /> Hablar por WhatsApp
     </a>
   );
@@ -228,7 +286,7 @@ export const FaqChatbot = ({ onStartConfigurator }: { onStartConfigurator: () =>
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15"><Bot size={22} /></span>
           <div>
             <p className="font-black leading-tight">Asistente comercial</p>
-            <p className="text-xs text-blue-100">Precios, baño, habitaciones, transporte y acceso</p>
+            <p className="text-xs text-blue-100">Precios, permisos, transporte y acceso</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
