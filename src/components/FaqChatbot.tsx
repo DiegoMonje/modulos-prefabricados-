@@ -1,26 +1,44 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Calculator, Camera, MessageCircle, RefreshCcw, Send, X } from 'lucide-react';
+import { Bot, Calculator, Camera, CheckCircle2, MessageCircle, RefreshCcw, Send, Sparkles, X } from 'lucide-react';
 
 type ChatRole = 'assistant' | 'user';
-type ChatCta = 'whatsapp' | 'photos' | 'calculator';
+type ChatCta = 'whatsapp' | 'photos' | 'calculator' | 'advisor';
+type AdvisorStep = 'use' | 'measure' | 'bathroom' | 'rooms' | 'province' | 'access' | null;
 
 interface ChatMessage {
   id: string;
   role: ChatRole;
   text: string;
   cta?: ChatCta;
+  ctaMessage?: string;
+  options?: string[];
+}
+
+interface AdvisorState {
+  active: boolean;
+  step: AdvisorStep;
+  data: {
+    use?: string;
+    measure?: string;
+    bathroom?: string;
+    rooms?: string;
+    province?: string;
+    access?: string;
+  };
 }
 
 const companyWhatsapp = '34600227252';
 const whatsappGeneralText = 'Hola, estoy viendo la calculadora de casetas prefabricadas y tengo una duda. Me gustaría recibir información.';
 const whatsappPhotosText = 'Hola, estoy interesado en una caseta prefabricada. Quiero enviar fotos/vídeos del acceso a mi parcela y de la zona donde iría colocada para que podáis valorar transporte y descarga.';
 const whatsappLicenseText = 'Hola, estoy interesado en un módulo prefabricado y tengo dudas sobre uso, permisos o licencia. Me gustaría recibir orientación antes de avanzar.';
+const whatsappCallbackText = 'Hola, estoy interesado en una caseta prefabricada. Me gustaría que me llamaseis para revisar medidas, precio, transporte y disponibilidad.';
 
 const buildWhatsappUrl = (message: string) => `https://wa.me/${companyWhatsapp}?text=${encodeURIComponent(message)}`;
+const makeId = () => crypto.randomUUID();
 
 const answers = {
   greeting:
-    'Hola, soy el asistente de Módulos Prefabricados San José. Te puedo orientar sobre precios, medidas, distribución, baño, habitaciones, transporte, terreno y acceso. Los importes son orientativos y siempre se revisan antes de fabricar.',
+    'Hola, soy el asistente de Módulos Prefabricados San José. Te puedo orientar sobre precios, medidas, distribución, baño, habitaciones, transporte, terreno y acceso. También puedo recomendarte un módulo según tu caso.',
   price:
     'El módulo de referencia 6 x 2,40 m parte de 4.750 € sin IVA. Incluye 1 puerta, 1 ventana 80x80 e instalación eléctrica básica: 1 enchufe, 1 interruptor, 1 punto de luz y cuadro eléctrico. El IVA se calcula aparte en el presupuesto.',
   shortPrice:
@@ -75,6 +93,10 @@ const answers = {
     'La necesidad de licencia depende del municipio, tipo de terreno, uso previsto, dimensiones y si el módulo se considera instalación temporal o permanente. Recomendamos consultarlo con el ayuntamiento o con un técnico local antes de confirmar el pedido.',
   housing:
     'Nuestros productos son casetas y módulos prefabricados. El uso como vivienda, instalación permanente o uso residencial depende de la normativa municipal y del terreno. Antes de comprar, conviene consultarlo con el ayuntamiento.',
+  advisor:
+    'Te hago unas preguntas rápidas y te recomiendo una configuración inicial. Es orientativo, pero sirve para empezar con buen criterio.',
+  callback:
+    'Perfecto. Para que podamos llamarte o darte una orientación más exacta, envíanos un WhatsApp con tu nombre, provincia, medida aproximada y uso previsto.',
   combined:
     'El precio del módulo no incluye transporte ni instalación de obra. El transporte se valora con transportistas externos según distancia y acceso. El terreno debe estar preparado, preferiblemente con base de hormigón nivelada o vigas de apoyo si es tierra/grava. Para revisarlo bien, envíanos fotos o vídeo del acceso y zona de colocación.',
   contact:
@@ -84,10 +106,10 @@ const answers = {
 };
 
 const primaryQuickQuestions = [
+  'Recomiéndame un módulo',
   '¿El precio es final?',
   'Precio 6 x 2,40',
   'Precio 3 x 2,40',
-  'Qué incluye',
   'Baño completo',
   'Habitación interior',
   '¿Cabe el camión?',
@@ -100,18 +122,32 @@ const secondaryQuickQuestions = [
   '¿Sirve como vivienda?',
   'Plazo de entrega',
   'Reservar pedido',
+  'Quiero que me llamen',
   'IVA',
-  'Enchufes',
   'Pedir presupuesto',
 ];
+
+const useOptions = ['Finca', 'Oficina', 'Obra', 'Almacén', 'Vestuario', 'Local comercial', 'Otro'];
+const measureOptions = ['3 x 2,40', '4 x 2,40', '5 x 2,40', '6 x 2,40', '7 x 2,40', 'No lo sé'];
+const bathroomOptions = ['Sí, con baño', 'No necesito baño', 'No lo sé'];
+const roomsOptions = ['Sin habitación', '1 habitación', '2 habitaciones', 'No lo sé'];
+const accessOptions = ['Acceso fácil', 'Acceso justo', 'No lo sé', 'Tengo fotos/vídeo'];
 
 const normalize = (value: string) =>
   value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
 const includesAny = (text: string, keywords: string[]) => keywords.some((keyword) => text.includes(keyword));
 
-const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta } => {
+const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta; ctaMessage?: string } => {
   const q = normalize(rawQuestion);
+
+  if (includesAny(q, ['recomiendame', 'recomendame', 'que modulo me recomiendas', 'asesor', 'ayudame a elegir', 'no se cual elegir'])) {
+    return { text: answers.advisor, cta: 'advisor' };
+  }
+
+  if (includesAny(q, ['llamadme', 'llamarme', 'que me llamen', 'quiero que me llamen', 'me podeis llamar', 'llamada'])) {
+    return { text: answers.callback, cta: 'whatsapp', ctaMessage: whatsappCallbackText };
+  }
 
   if (includesAny(q, ['precio final', 'es final', 'definitivo', 'precio definitivo', 'presupuesto final', 'es el precio real', 'precio real', 'el precio que sale'])) {
     return { text: answers.finalPrice, cta: 'calculator' };
@@ -130,11 +166,11 @@ const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta } => {
   }
 
   if (includesAny(q, ['licencia', 'permiso', 'permisos', 'ayuntamiento', 'legal', 'legalidad', 'normativa'])) {
-    return { text: answers.license, cta: 'whatsapp' };
+    return { text: answers.license, cta: 'whatsapp', ctaMessage: whatsappLicenseText };
   }
 
   if (includesAny(q, ['vivienda', 'vivir', 'casa', 'residencial', 'habitable', 'vivir en una caseta', 'vivir en un modulo'])) {
-    return { text: answers.housing, cta: 'whatsapp' };
+    return { text: answers.housing, cta: 'whatsapp', ctaMessage: whatsappLicenseText };
   }
 
   if (includesAny(q, ['plazo', 'tarda', 'tardais', 'entrega', 'cuando estaria', 'cuanto tarda', 'fecha de entrega', 'tiempo de entrega'])) {
@@ -201,7 +237,100 @@ const getAnswer = (rawQuestion: string): { text: string; cta?: ChatCta } => {
   return { text: answers.fallback, cta: 'whatsapp' };
 };
 
-const ChatCtaButton = ({ cta, onStartConfigurator }: { cta: ChatCta; onStartConfigurator: () => void }) => {
+const estimateRecommendation = (data: AdvisorState['data']) => {
+  const use = data.use || 'Uso no indicado';
+  const wantsBath = data.bathroom === 'Sí, con baño';
+  const rooms = data.rooms || 'No indicado';
+  const access = data.access || 'No indicado';
+  const explicitMeasure = data.measure && data.measure !== 'No lo sé' ? data.measure : null;
+
+  let recommendedMeasure = explicitMeasure || '6 x 2,40';
+  let reason = 'Es la medida más equilibrada para empezar y la más solicitada.';
+
+  if (!explicitMeasure) {
+    if (use === 'Obra' || use === 'Almacén') {
+      recommendedMeasure = wantsBath ? '5 x 2,40' : '3 x 2,40 o 4 x 2,40';
+      reason = 'Para obra o almacén suele interesar algo funcional y económico, salvo que necesites baño o más espacio interior.';
+    }
+
+    if (use === 'Oficina' || use === 'Local comercial') {
+      recommendedMeasure = wantsBath || rooms !== 'Sin habitación' ? '6 x 2,40 o 7 x 2,40' : '6 x 2,40';
+      reason = 'Para oficina o local conviene dejar espacio para mesa, paso, enchufes, luz natural y posible climatización.';
+    }
+
+    if (use === 'Finca' || use === 'Vestuario') {
+      recommendedMeasure = wantsBath || rooms !== 'Sin habitación' ? '6 x 2,40 o 7 x 2,40' : '5 x 2,40 o 6 x 2,40';
+      reason = 'Para finca o vestuario suele ser útil reservar espacio para baño, zona de cambio o almacenamiento.';
+    }
+
+    if (rooms === '2 habitaciones') {
+      recommendedMeasure = '7 x 2,40 u 8 x 2,40 bajo revisión';
+      reason = 'Con dos habitaciones hace falta revisar muy bien la distribución para que no quede demasiado justo.';
+    }
+  }
+
+  const extras: string[] = [];
+  if (wantsBath) extras.push('baño completo');
+  if (rooms === '1 habitación') extras.push('1 habitación interior');
+  if (rooms === '2 habitaciones') extras.push('2 habitaciones interiores');
+  if (use === 'Oficina' || use === 'Local comercial') extras.push('aire acondicionado y enchufes adicionales');
+
+  const warnings: string[] = [];
+  if (access === 'Acceso justo' || access === 'No lo sé') warnings.push('revisar acceso para camión con fotos o vídeo');
+  if (use === 'Finca' || use === 'Otro') warnings.push('consultar licencia o normativa municipal si el uso será permanente');
+
+  return {
+    recommendedMeasure,
+    reason,
+    extras: extras.length ? extras.join(', ') : 'sin extras imprescindibles de inicio',
+    warnings: warnings.length ? warnings.join(' y ') : 'sin avisos especiales, pendiente de revisión final',
+  };
+};
+
+const buildAdvisorWhatsappText = (data: AdvisorState['data']) => {
+  const recommendation = estimateRecommendation(data);
+  return [
+    'Hola, vengo desde el asesor del chat de Módulos Prefabricados San José.',
+    `Uso previsto: ${data.use || 'No indicado'}`,
+    `Medida orientativa elegida: ${data.measure || 'No indicada'}`,
+    `Baño: ${data.bathroom || 'No indicado'}`,
+    `Habitaciones: ${data.rooms || 'No indicado'}`,
+    `Provincia/localidad: ${data.province || 'No indicada'}`,
+    `Acceso: ${data.access || 'No indicado'}`,
+    `Recomendación inicial: ${recommendation.recommendedMeasure}`,
+    `Extras a revisar: ${recommendation.extras}`,
+    'Me gustaría que revisaseis mi caso y me orientaseis con el presupuesto.',
+  ].join('\n');
+};
+
+const getAdvisorQuestion = (step: AdvisorStep): { text: string; options?: string[] } => {
+  if (step === 'use') return { text: 'Primero, ¿para qué uso necesitas el módulo?', options: useOptions };
+  if (step === 'measure') return { text: '¿Qué medida te encaja mejor ahora mismo?', options: measureOptions };
+  if (step === 'bathroom') return { text: '¿Necesitas cuarto de baño?', options: bathroomOptions };
+  if (step === 'rooms') return { text: '¿Quieres dividirlo con habitaciones interiores?', options: roomsOptions };
+  if (step === 'province') return { text: '¿En qué provincia o localidad sería la entrega? Puedes escribirlo abajo.' };
+  if (step === 'access') return { text: '¿Cómo ves el acceso para el camión?', options: accessOptions };
+  return { text: '' };
+};
+
+const getNextAdvisorStep = (step: AdvisorStep): AdvisorStep => {
+  if (step === 'use') return 'measure';
+  if (step === 'measure') return 'bathroom';
+  if (step === 'bathroom') return 'rooms';
+  if (step === 'rooms') return 'province';
+  if (step === 'province') return 'access';
+  return null;
+};
+
+const ChatCtaButton = ({ cta, ctaMessage, onStartConfigurator, onStartAdvisor }: { cta: ChatCta; ctaMessage?: string; onStartConfigurator: () => void; onStartAdvisor: () => void }) => {
+  if (cta === 'advisor') {
+    return (
+      <button onClick={onStartAdvisor} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
+        <Sparkles size={16} /> Empezar asesor
+      </button>
+    );
+  }
+
   if (cta === 'calculator') {
     return (
       <button onClick={onStartConfigurator} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-orange px-3 py-2 text-sm font-bold text-white transition hover:bg-orange-600">
@@ -212,14 +341,14 @@ const ChatCtaButton = ({ cta, onStartConfigurator }: { cta: ChatCta; onStartConf
 
   if (cta === 'photos') {
     return (
-      <a href={buildWhatsappUrl(whatsappPhotosText)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-green px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700">
+      <a href={buildWhatsappUrl(ctaMessage || whatsappPhotosText)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-green px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700">
         <Camera size={16} /> Enviar fotos por WhatsApp
       </a>
     );
   }
 
   return (
-    <a href={buildWhatsappUrl(whatsappLicenseText)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-green px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700">
+    <a href={buildWhatsappUrl(ctaMessage || whatsappGeneralText)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-green px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700">
       <MessageCircle size={16} /> Hablar por WhatsApp
     </a>
   );
@@ -235,11 +364,22 @@ const QuestionChips = ({ questions, onAsk }: { questions: string[]; onAsk: (ques
   </div>
 );
 
+const OptionButtons = ({ options, onSelect }: { options: string[]; onSelect: (option: string) => void }) => (
+  <div className="mt-3 flex flex-wrap gap-2">
+    {options.map((option) => (
+      <button key={option} onClick={() => onSelect(option)} className="rounded-full bg-orange-50 px-3 py-2 text-xs font-black text-brand-orange ring-1 ring-orange-200 transition hover:bg-orange-100">
+        {option}
+      </button>
+    ))}
+  </div>
+);
+
 export const FaqChatbot = ({ onStartConfigurator }: { onStartConfigurator: () => void }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [advisor, setAdvisor] = useState<AdvisorState>({ active: false, step: null, data: {} });
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 'welcome', role: 'assistant', text: answers.greeting },
+    { id: 'welcome', role: 'assistant', text: answers.greeting, cta: 'advisor' },
   ]);
   const listRef = useRef<HTMLDivElement | null>(null);
   const hasMessages = useMemo(() => messages.length > 1, [messages.length]);
@@ -249,20 +389,76 @@ export const FaqChatbot = ({ onStartConfigurator }: { onStartConfigurator: () =>
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isOpen]);
 
+  const appendMessages = (nextMessages: ChatMessage[]) => {
+    setMessages((prev) => [...prev, ...nextMessages]);
+  };
+
+  const startAdvisor = () => {
+    const firstStep: AdvisorStep = 'use';
+    const question = getAdvisorQuestion(firstStep);
+    setAdvisor({ active: true, step: firstStep, data: {} });
+    appendMessages([
+      { id: makeId(), role: 'assistant', text: 'Perfecto. Te hago 6 preguntas rápidas y te doy una recomendación inicial.', options: question.options },
+    ]);
+  };
+
+  const finishAdvisor = (data: AdvisorState['data']) => {
+    const recommendation = estimateRecommendation(data);
+    const whatsappText = buildAdvisorWhatsappText(data);
+    setAdvisor({ active: false, step: null, data });
+    appendMessages([
+      {
+        id: makeId(),
+        role: 'assistant',
+        text: `Recomendación inicial: ${recommendation.recommendedMeasure}. ${recommendation.reason}\n\nExtras a valorar: ${recommendation.extras}.\n\nAntes de cerrar precio: ${recommendation.warnings}.\n\nPuedes abrir la calculadora para ajustar precio y plano, o enviarnos este resumen por WhatsApp para revisarlo contigo.`,
+        cta: 'whatsapp',
+        ctaMessage: whatsappText,
+      },
+      { id: makeId(), role: 'assistant', text: 'También puedes abrir la calculadora y crear tu presupuesto/proforma orientativa.', cta: 'calculator' },
+    ]);
+  };
+
+  const answerAdvisor = (answer: string) => {
+    if (!advisor.active || !advisor.step) return;
+
+    const currentStep = advisor.step;
+    const nextStep = getNextAdvisorStep(currentStep);
+    const nextData = { ...advisor.data, [currentStep]: answer };
+
+    appendMessages([{ id: makeId(), role: 'user', text: answer }]);
+    setInput('');
+
+    if (!nextStep) {
+      finishAdvisor(nextData);
+      return;
+    }
+
+    const nextQuestion = getAdvisorQuestion(nextStep);
+    setAdvisor({ active: true, step: nextStep, data: nextData });
+    appendMessages([{ id: makeId(), role: 'assistant', text: nextQuestion.text, options: nextQuestion.options }]);
+  };
+
   const addQuestion = (question: string) => {
     const cleaned = question.trim();
     if (!cleaned) return;
+
+    if (advisor.active) {
+      answerAdvisor(cleaned);
+      return;
+    }
+
     const response = getAnswer(cleaned);
     const nextMessages: ChatMessage[] = [
-      { id: crypto.randomUUID(), role: 'user', text: cleaned },
-      { id: crypto.randomUUID(), role: 'assistant', text: response.text, cta: response.cta },
+      { id: makeId(), role: 'user', text: cleaned },
+      { id: makeId(), role: 'assistant', text: response.text, cta: response.cta, ctaMessage: response.ctaMessage },
     ];
     setMessages((prev) => [...prev, ...nextMessages]);
     setInput('');
   };
 
   const resetChat = () => {
-    setMessages([{ id: 'welcome', role: 'assistant', text: answers.greeting }]);
+    setAdvisor({ active: false, step: null, data: {} });
+    setMessages([{ id: 'welcome', role: 'assistant', text: answers.greeting, cta: 'advisor' }]);
     setInput('');
   };
 
@@ -285,8 +481,8 @@ export const FaqChatbot = ({ onStartConfigurator }: { onStartConfigurator: () =>
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15"><Bot size={22} /></span>
           <div>
-            <p className="font-black leading-tight">Asistente comercial</p>
-            <p className="text-xs text-blue-100">Precios, permisos, transporte y acceso</p>
+            <p className="font-black leading-tight">Asistente comercial Pro</p>
+            <p className="text-xs text-blue-100">Recomienda, filtra dudas y deriva a WhatsApp</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -300,15 +496,16 @@ export const FaqChatbot = ({ onStartConfigurator }: { onStartConfigurator: () =>
       </div>
 
       <div className="border-b border-slate-200 bg-blue-50 px-5 py-3 text-xs leading-relaxed text-blue-950">
-        <strong>Respuesta rápida:</strong> precios orientativos sin IVA. El presupuesto final se revisa según medidas, acceso, transporte y acabados.
+        <strong>Respuesta rápida:</strong> precios orientativos sin IVA. El asesor puede recomendarte una medida inicial en menos de un minuto.
       </div>
 
       <div ref={listRef} className="max-h-[54vh] space-y-4 overflow-y-auto bg-slate-50 px-4 py-4">
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === 'user' ? 'bg-brand-orange text-white' : 'bg-white text-slate-700 shadow-sm ring-1 ring-slate-200'}`}>
+            <div className={`max-w-[90%] whitespace-pre-line rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === 'user' ? 'bg-brand-orange text-white' : 'bg-white text-slate-700 shadow-sm ring-1 ring-slate-200'}`}>
               <p>{message.text}</p>
-              {message.role === 'assistant' && message.cta ? <ChatCtaButton cta={message.cta} onStartConfigurator={onStartConfigurator} /> : null}
+              {message.options ? <OptionButtons options={message.options} onSelect={answerAdvisor} /> : null}
+              {message.role === 'assistant' && message.cta ? <ChatCtaButton cta={message.cta} ctaMessage={message.ctaMessage} onStartConfigurator={onStartConfigurator} onStartAdvisor={startAdvisor} /> : null}
             </div>
           </div>
         ))}
@@ -321,13 +518,18 @@ export const FaqChatbot = ({ onStartConfigurator }: { onStartConfigurator: () =>
           <QuestionChips questions={hasMessages ? secondaryQuickQuestions : ['Transporte', 'Presupuesto', 'Enviar fotos']} onAsk={addQuestion} />
         </div>
         <form onSubmit={submit} className="flex gap-2">
-          <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Escribe tu pregunta..." className="min-w-0 flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-blue-100" />
+          <input
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder={advisor.active && advisor.step === 'province' ? 'Escribe provincia o localidad...' : 'Escribe tu pregunta...'}
+            className="min-w-0 flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-blue-100"
+          />
           <button type="submit" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-orange text-white transition hover:bg-orange-600 disabled:opacity-50" disabled={!input.trim()} aria-label="Enviar pregunta">
             <Send size={18} />
           </button>
         </form>
         <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span>Atención directa: 600 227 252</span>
+          <span className="inline-flex items-center gap-1"><CheckCircle2 size={13} /> Atención directa: 600 227 252</span>
           <a href={buildWhatsappUrl(whatsappGeneralText)} target="_blank" rel="noreferrer" className="font-bold text-green-700 hover:underline">WhatsApp</a>
         </div>
       </div>
