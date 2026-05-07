@@ -13,6 +13,9 @@ export const SHORT_MODULE_SURCHARGE_BY_LENGTH: Record<number, number> = {
 };
 export const VAT_RATE = 0.21;
 
+export const ROOM_INCLUDED_FEATURES = ['puerta', 'ventana', 'punto de luz', 'enchufe'];
+export const BATHROOM_INCLUDED_FEATURES = ['puerta', 'ventana 40x40', 'punto de luz', 'enchufe interior', 'enchufe exterior para termo eléctrico'];
+
 export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price: number; width: number; height: number; zone: 'edge' | 'inside'; included?: boolean }> = {
   base_door: { label: 'Puerta incluida', price: 0, width: 12, height: 7, zone: 'edge', included: true },
   base_window_80x80: { label: 'Ventana 80x80 incluida', price: 0, width: 13, height: 5, zone: 'edge', included: true },
@@ -23,7 +26,7 @@ export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price:
   additional_door: { label: 'Puerta adicional', price: 120, width: 12, height: 7, zone: 'edge' },
   window_80x80: { label: 'Ventana 80x80 extra', price: 200, width: 13, height: 5, zone: 'edge' },
   large_window: { label: 'Ventana grande', price: 250, width: 18, height: 5, zone: 'edge' },
-  interior_room: { label: 'Habitación interior', price: 300, width: 28, height: 22, zone: 'inside' },
+  interior_room: { label: 'Habitación interior', price: 700, width: 28, height: 22, zone: 'inside' },
   full_bathroom: { label: 'Baño completo', price: 1500, width: 20, height: 18, zone: 'inside' },
   air_conditioning: { label: 'Aire acondicionado', price: 600, width: 14, height: 8, zone: 'inside' },
   wall_partition: { label: 'Tabique interior', price: 0, width: 100, height: 3, zone: 'inside' },
@@ -98,8 +101,8 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
   if (additionalDoors) extrasList.push(`${additionalDoors} puerta(s) adicional(es)`);
   if (windows80x80) extrasList.push(`${windows80x80} ventana(s) 80x80 extra`);
   if (largeWindows) extrasList.push(`${largeWindows} ventana(s) grande(s)`);
-  if (interiorRooms) extrasList.push(`${interiorRooms} habitación(es) interior(es)`);
-  if (hasFullBathroom) extrasList.push('baño completo');
+  if (interiorRooms) extrasList.push(`${interiorRooms} habitación(es) interior(es) · incluye ${ROOM_INCLUDED_FEATURES.join(', ')}`);
+  if (hasFullBathroom) extrasList.push(`baño completo · incluye ${BATHROOM_INCLUDED_FEATURES.join(', ')}`);
   if (hasAirConditioning) extrasList.push('aire acondicionado');
   if (wallPartitions) extrasList.push(`${wallPartitions} tabique(s) interior(es)`);
 
@@ -118,6 +121,8 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
     hasAirConditioning,
     extrasList,
     includedList,
+    roomIncludedFeatures: ROOM_INCLUDED_FEATURES,
+    bathroomIncludedFeatures: BATHROOM_INCLUDED_FEATURES,
   };
 };
 
