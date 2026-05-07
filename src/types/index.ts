@@ -56,6 +56,9 @@ export interface LayoutItem {
   zone: 'edge' | 'inside';
   included?: boolean;
   layoutOrientation?: 'transversal' | 'longitudinal';
+  roomWidthMeters?: number;
+  showerTrayWidthMeters?: 0.9 | 1 | null;
+  includedFeatures?: string[];
 }
 
 export interface ConfiguratorState {
@@ -104,6 +107,8 @@ export interface LayoutSummary {
   hasAirConditioning: boolean;
   extrasList: string[];
   includedList: string[];
+  roomIncludedFeatures?: string[];
+  bathroomIncludedFeatures?: string[];
 }
 
 export interface PriceResult {
