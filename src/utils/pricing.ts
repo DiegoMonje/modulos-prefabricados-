@@ -3,7 +3,11 @@ import { ConfiguratorState, LayoutItem, LayoutItemType, LayoutSummary, PriceResu
 export const REFERENCE_LENGTH = 6;
 export const REFERENCE_WIDTH = 2.4;
 export const REFERENCE_BASE_PRICE = 4750;
-export const ORIENTATIVE_PRICE_PER_M2 = 330;
+export const REFERENCE_SQUARE_METERS = REFERENCE_LENGTH * REFERENCE_WIDTH;
+export const REFERENCE_PRICE_PER_M2 = REFERENCE_BASE_PRICE / REFERENCE_SQUARE_METERS;
+export const ORIENTATIVE_PRICE_PER_M2 = REFERENCE_PRICE_PER_M2;
+export const SHORT_MODULE_SURCHARGE_RATE = 0.10;
+export const SHORT_MODULE_LENGTHS = [3, 4, 5];
 export const VAT_RATE = 0.21;
 
 export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price: number; width: number; height: number; zone: 'edge' | 'inside'; included?: boolean }> = {
@@ -39,13 +43,21 @@ export const formatCurrency = (value: number): string =>
 
 const isReferenceModule = (config: ConfiguratorState) =>
   Math.abs(config.length - REFERENCE_LENGTH) < 0.01 &&
-  Math.abs(config.width - REFERENCE_WIDTH) < 0.01 &&
-  !config.isSpecialPanel;
+  Math.abs(config.width - REFERENCE_WIDTH) < 0.01;
 
-export const calculateBasePrice = (config: ConfiguratorState): number => {
+const hasShortModuleSurcharge = (length: number) =>
+  SHORT_MODULE_LENGTHS.some((shortLength) => Math.abs(length - shortLength) < 0.01);
+
+export const calculateBasePrice = (config: Pick<ConfiguratorState, 'length' | 'width'>): number => {
   const squareMeters = Number((config.length * config.width).toFixed(2));
-  if (isReferenceModule(config)) return REFERENCE_BASE_PRICE;
-  return Math.round(squareMeters * ORIENTATIVE_PRICE_PER_M2);
+  if (isReferenceModule(config as ConfiguratorState)) return REFERENCE_BASE_PRICE;
+
+  const proportionalBase = squareMeters * REFERENCE_PRICE_PER_M2;
+  const adjustedBase = hasShortModuleSurcharge(config.length)
+    ? proportionalBase * (1 + SHORT_MODULE_SURCHARGE_RATE)
+    : proportionalBase;
+
+  return Math.round(adjustedBase);
 };
 
 export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
@@ -70,6 +82,7 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
   if (includedWindow80x80) includedList.push('1 ventana 80x80 incluida');
   includedList.push('instalación eléctrica básica');
   if (includedSocketQuantity) includedList.push(`${includedSocketQuantity} enchufe incluido`);
+  includedList.push('1 interruptor incluido');
   if (includedLightPointQuantity) includedList.push(`${includedLightPointQuantity} punto de luz incluido`);
   if (includedElectricalPanel) includedList.push('cuadro eléctrico incluido');
 
