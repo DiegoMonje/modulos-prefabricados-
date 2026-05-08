@@ -10,12 +10,12 @@ const galleryImages = [
   {
     src: '/images/caseta-exterior-lateral.webp',
     title: 'Vista exterior lateral',
-    description: 'Caseta prefabricada instalada en finca, con estructura metálica y panel blanco.',
+    description: 'Módulo prefabricado instalado en finca, con estructura metálica y panel blanco.',
   },
   {
     src: '/images/caseta-exterior-jardin.webp',
     title: 'Módulo terminado',
-    description: 'Ejemplo de caseta acabada para finca, almacén, oficina o uso auxiliar.',
+    description: 'Ejemplo de módulo acabado para finca, almacén, oficina o uso auxiliar.',
   },
   {
     src: '/images/caseta-interior-oficina.webp',
@@ -25,11 +25,11 @@ const galleryImages = [
 ];
 
 const habitualModels = [
-  ['Caseta compacta', '3 x 2,40 m', 'Herramientas, finca, pequeño almacén'],
-  ['Caseta auxiliar', '4 x 2,40 m', 'Herramientas, finca, uso auxiliar'],
-  ['Caseta media', '5 x 2,40 m', 'Almacén, obra, uso auxiliar'],
-  ['Más vendida', '6 x 2,40 m', 'Oficina pequeña, finca, almacén, caseta de obra'],
-  ['Caseta grande', '7 x 2,40 m', 'Vestuario, oficina, módulo amplio'],
+  ['Módulo compacto', '3 x 2,40 m', 'Herramientas, finca, pequeño almacén'],
+  ['Módulo auxiliar', '4 x 2,40 m', 'Herramientas, finca, uso auxiliar'],
+  ['Módulo medio', '5 x 2,40 m', 'Almacén, obra, uso auxiliar'],
+  ['Más vendida', '6 x 2,40 m', 'Oficina pequeña, finca, almacén, módulo de obra'],
+  ['Módulo grande', '7 x 2,40 m', 'Vestuario, oficina, módulo amplio'],
   ['Especial bajo consulta', '8 x 2,40 m', 'Proyectos especiales, revisar transporte y viabilidad'],
 ] as const;
 
@@ -75,7 +75,7 @@ const ModelThumbnail = ({ measure }: { measure: string }) => {
 };
 
 export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdmin: () => void }) => {
-  const wa = 'https://wa.me/34600227252?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20una%20caseta%20prefabricada.';
+  const wa = 'https://wa.me/34600227252?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20m%C3%B3dulo%20prefabricado.';
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -85,7 +85,7 @@ export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdm
             <div className="rounded-xl bg-brand-navy p-2 text-white"><Building2 size={24} /></div>
             <div>
               <p className="font-bold text-slate-900">Módulos Prefabricados San José S.L.</p>
-              <p className="text-xs text-slate-500">Casetas y módulos prefabricados</p>
+              <p className="text-xs text-slate-500">Módulos prefabricados a medida</p>
             </div>
           </div>
           <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 md:flex">
@@ -110,17 +110,17 @@ export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdm
           <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-20 md:grid-cols-2 md:items-center">
             <div>
               <span className="mb-4 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-semibold ring-1 ring-white/20">Configurador visual sencillo y jugable</span>
-              <h1 className="text-4xl font-black tracking-tight md:text-6xl">Casetas prefabricadas a medida desde 3 metros</h1>
-              <p className="mt-6 max-w-xl text-lg text-slate-200">Fabricamos casetas y módulos con panel sándwich blanco de 30 mm, normalmente entre 5 y 7 metros de largo, con ancho estándar de 2,40 m o 2,50 m. Nuestro modelo más solicitado es el de 6 x 2,40 m.</p>
+              <h1 className="text-4xl font-black tracking-tight md:text-6xl">Módulos prefabricados a medida desde 3 metros</h1>
+              <p className="mt-6 max-w-xl text-lg text-slate-200">Fabricamos módulos con panel sándwich blanco de 30 mm, normalmente entre 5 y 7 metros de largo, con ancho estándar de 2,40 m o 2,50 m. Nuestro modelo más solicitado es el de 6 x 2,40 m.</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Button onClick={onStart} className="text-base">Calcular mi caseta</Button>
+                <Button onClick={onStart} className="text-base">Calcular mi módulo</Button>
                 <a href={wa} target="_blank" rel="noreferrer"><Button variant="outline" className="border-white/30 bg-white/10 text-white hover:bg-white/20">Pedir presupuesto por WhatsApp</Button></a>
               </div>
-              <p className="mt-4 text-sm text-slate-300">El cliente puede jugar con el módulo, añadir puertas, ventanas, baño y habitaciones en un plano 2D orientativo.</p>
+              <p className="mt-4 text-sm text-slate-300">El cliente puede configurar el módulo, añadir puertas, ventanas, baño y habitaciones en un plano 2D orientativo.</p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/10 p-3 shadow-2xl backdrop-blur">
               <div className="overflow-hidden rounded-2xl bg-white shadow-xl">
-                <img src="/images/caseta-exterior-frontal.webp" alt="Caseta prefabricada blanca exterior" className="h-[330px] w-full object-cover" />
+                <img src="/images/caseta-exterior-frontal.webp" alt="Módulo prefabricado blanco exterior" className="h-[330px] w-full object-cover" />
                 <div className="p-4 text-slate-900">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -194,7 +194,7 @@ export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdm
             <div className="mx-auto max-w-3xl text-center">
               <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-bold text-brand-blue"><ImageIcon size={16} /> Galería de módulos reales</span>
               <h2 className="mt-4 text-3xl font-black text-slate-900 md:text-4xl">Ejemplos de acabados exteriores e interiores</h2>
-              <p className="mt-3 text-slate-600">Imágenes para que el cliente vea cómo puede quedar su caseta antes de solicitar presupuesto.</p>
+              <p className="mt-3 text-slate-600">Imágenes para que el cliente vea cómo puede quedar su módulo antes de solicitar presupuesto.</p>
             </div>
 
             <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
@@ -211,11 +211,11 @@ export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdm
 
             <div className="mt-10 rounded-3xl bg-slate-950 p-6 text-white md:flex md:items-center md:justify-between">
               <div>
-                <h3 className="text-2xl font-black">¿Quieres una caseta parecida?</h3>
+                <h3 className="text-2xl font-black">¿Quieres un módulo parecido?</h3>
                 <p className="mt-2 text-slate-300">Configura medidas, distribución y extras. Te enviamos presupuesto personalizado.</p>
               </div>
               <div className="mt-5 flex flex-col gap-3 sm:flex-row md:mt-0">
-                <Button onClick={onStart}>Calcular mi caseta</Button>
+                <Button onClick={onStart}>Calcular mi módulo</Button>
                 <a href={wa} target="_blank" rel="noreferrer"><Button variant="outline" className="border-white/30 bg-white/10 text-white hover:bg-white/20">WhatsApp</Button></a>
               </div>
             </div>
@@ -253,10 +253,10 @@ export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdm
         <section id="contacto" className="bg-brand-navy py-12 text-white">
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 px-4 md:flex-row md:items-center">
             <div>
-              <h2 className="text-2xl font-black">¿Quieres calcular tu caseta?</h2>
+              <h2 className="text-2xl font-black">¿Quieres calcular tu módulo?</h2>
               <p className="mt-2 text-slate-300">Configura tu módulo, juega con el plano 2D y solicita presupuesto personalizado.</p>
             </div>
-            <Button onClick={onStart}>Calcular mi caseta</Button>
+            <Button onClick={onStart}>Calcular mi módulo</Button>
           </div>
         </section>
       </main>
