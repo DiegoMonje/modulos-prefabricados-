@@ -1,4 +1,4 @@
-import { ConfiguratorState, ContactFormState, LeadRow, PriceResult, QuoteRow } from '../types';
+import { ConfiguratorState, ContactFormState, LeadRow, LayoutItem, PriceResult, QuoteRow } from '../types';
 import { formatCurrency, ORIENTATIVE_PRICE_PER_M2, REFERENCE_BASE_PRICE, REFERENCE_LENGTH, REFERENCE_WIDTH } from './pricing';
 
 const company = {
@@ -60,42 +60,251 @@ const wrappedTextCommands = (text: string, x: number, y: number, maxChars: numbe
   return { commands, nextY: y - lines.length * lineHeight };
 };
 
-const layoutLabel = (itemType?: string, itemLabel?: string) => {
+const drawLine = (x1: number, y1: number, x2: number, y2: number, width = 1, color = '0.05 0.09 0.16') =>
+  `${color} RG ${width} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S\n`;
+
+const drawRect = (x: number, y: number, width: number, height: number, stroke = '0.05 0.09 0.16', lineWidth = 1, fill?: string) => {
+  const fillCommand = fill ? `${fill} rg ${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f\n` : '';
+  return `${fillCommand}${stroke} RG ${lineWidth} w ${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S\n`;
+};
+
+const drawCircle = (cx: number, cy: number, r: number, stroke = '0.05 0.09 0.16', lineWidth = 1, fill?: string) => {
+  const c = r * 0.5522847498;
+  let commands = `${stroke} RG ${lineWidth} w\n`;
+  if (fill) commands += `${fill} rg\n`;
+  commands += `${(cx + r).toFixed(2)} ${cy.toFixed(2)} m ${(cx + r).toFixed(2)} ${(cy + c).toFixed(2)} ${(cx + c).toFixed(2)} ${(cy + r).toFixed(2)} ${cx.toFixed(2)} ${(cy + r).toFixed(2)} c\n`;
+  commands += `${(cx - c).toFixed(2)} ${(cy + r).toFixed(2)} ${(cx - r).toFixed(2)} ${(cy + c).toFixed(2)} ${(cx - r).toFixed(2)} ${cy.toFixed(2)} c\n`;
+  commands += `${(cx - r).toFixed(2)} ${(cy - c).toFixed(2)} ${(cx - c).toFixed(2)} ${(cy - r).toFixed(2)} ${cx.toFixed(2)} ${(cy - r).toFixed(2)} c\n`;
+  commands += `${(cx + c).toFixed(2)} ${(cy - r).toFixed(2)} ${(cx + r).toFixed(2)} ${(cy - c).toFixed(2)} ${(cx + r).toFixed(2)} ${cy.toFixed(2)} c\n`;
+  commands += fill ? 'B\n' : 'S\n';
+  return commands;
+};
+
+const isDoor = (item: LayoutItem) => item.itemType === 'base_door' || item.itemType === 'additional_door';
+const isWindow80 = (item: LayoutItem) => item.itemType === 'base_window_80x80' || item.itemType === 'window_80x80';
+const isWindow = (item: LayoutItem) => isWindow80(item) || item.itemType === 'large_window';
+const isEdgeOpening = (item: LayoutItem) => item.zone === 'edge' && (isDoor(item) || isWindow(item));
+
+const edgeSideFor = (item: LayoutItem): 'top' | 'right' | 'bottom' | 'left' => {
+  if (item.rotation === 90) return 'right';
+  if (item.rotation === 180) return 'bottom';
+  if (item.rotation === 270) return 'left';
+
+  const topDistance = Math.abs(item.y);
+  const bottomDistance = Math.abs(100 - (item.y + item.height));
+  const leftDistance = Math.abs(item.x);
+  const rightDistance = Math.abs(100 - (item.x + item.width));
+  const min = Math.min(topDistance, bottomDistance, leftDistance, rightDistance);
+
+  if (min === bottomDistance) return 'bottom';
+  if (min === leftDistance) return 'left';
+  if (min === rightDistance) return 'right';
+  return 'top';
+};
+
+const roomDepthMeters = (item: LayoutItem, moduleLength: number, moduleWidth: number) => {
+  const orientation = item.layoutOrientation || 'transversal';
+  if (item.roomWidthMeters) return item.roomWidthMeters;
+  if (orientation === 'longitudinal') return Number(((item.width / 100) * moduleLength).toFixed(2));
+  return Number(((item.height / 100) * moduleWidth).toFixed(2));
+};
+
+const planLabel = (item: LayoutItem) => {
   const labels: Record<string, string> = {
     base_door: 'P',
     additional_door: 'P',
-    base_window_80x80: 'V',
-    window_80x80: 'V',
+    base_window_80x80: 'V 80x80',
+    window_80x80: 'V 80x80',
     large_window: 'VG',
     base_socket: 'T',
     additional_socket: 'T',
     base_light_point: 'PL',
     base_electrical_panel: 'CE',
     air_conditioning: 'A/A',
-    interior_room: 'H',
-    full_bathroom: 'B',
+    wall_partition: 'TABIQUE',
+    interior_room: 'HABITACION',
+    full_bathroom: 'BANO',
   };
-  return labels[itemType || ''] || itemLabel?.slice(0, 4) || 'E';
+  return labels[item.itemType] || item.itemLabel || 'E';
 };
 
-const planCommands = (config: any, x: number, y: number, width = 300, height = 105) => {
+const planCommands = (config: any, x: number, y: number, maxWidth = 330, maxHeight = 128) => {
   if (!config) return '';
+
+  const moduleLength = Math.max(Number(config.length || 6), 0.1);
+  const moduleWidth = Math.max(Number(config.width || 2.4), 0.1);
+  const ratio = moduleLength / moduleWidth;
+  let planWidth = maxWidth;
+  let planHeight = planWidth / ratio;
+  if (planHeight > maxHeight) {
+    planHeight = maxHeight;
+    planWidth = planHeight * ratio;
+  }
+
+  const planX = x + (maxWidth - planWidth) / 2;
+  const planTop = y - 24;
+  const planBottom = planTop - planHeight;
+  const wallThickness = 4;
+  const items = ((config.layout_json || []) as LayoutItem[]).filter(Boolean);
+  const px = (pct: number) => planX + (pct / 100) * planWidth;
+  const py = (pct: number) => planTop - (pct / 100) * planHeight;
+  const pw = (pct: number) => (pct / 100) * planWidth;
+  const ph = (pct: number) => (pct / 100) * planHeight;
+
   let commands = '';
-  commands += textCommand('Plano 2D orientativo', x, y + 16, 11, true);
-  commands += `0.94 0.97 1 rg ${x} ${y - height} ${width} ${height} re f\n`;
-  commands += `0.05 0.09 0.16 RG 2 w ${x} ${y - height} ${width} ${height} re S\n`;
-  commands += '0.70 0.76 0.84 RG 0.2 w\n';
-  for (let gx = x + 20; gx < x + width; gx += 20) commands += `${gx} ${y - height} m ${gx} ${y} l S\n`;
-  for (let gy = y - height + 20; gy < y; gy += 20) commands += `${x} ${gy} m ${x + width} ${gy} l S\n`;
-  commands += '0.05 0.09 0.16 rg\n';
-  const items = (config.layout_json || []) as Array<{ itemType?: string; itemLabel?: string; x?: number; y?: number; width?: number; height?: number; included?: boolean; rotation?: number }>;
-  items.slice(0, 18).forEach((item) => {
-    const px = x + ((Number(item.x || 0) / 100) * width);
-    const py = y - ((Number(item.y || 0) / 100) * height) - 8;
-    const label = `${layoutLabel(item.itemType, item.itemLabel)}${item.rotation ? ` ${item.rotation}g` : ''}`;
-    commands += textCommand(label, px, py, 7, Boolean(item.included));
+  commands += textCommand('Plano tecnico 2D a escala orientativa', x, y, 11, true);
+  commands += textCommand(`Modulo ${moduleLength} x ${moduleWidth} m`, x + maxWidth - 115, y, 9, true);
+  commands += `0.97 0.99 1 rg ${x} ${(planBottom - 20).toFixed(2)} ${maxWidth} ${(planHeight + 54).toFixed(2)} re f\n`;
+  commands += `0.82 0.88 0.96 RG 0.5 w ${x} ${(planBottom - 20).toFixed(2)} ${maxWidth} ${(planHeight + 54).toFixed(2)} re S\n`;
+
+  // Cotas principales
+  commands += drawLine(planX, planTop + 14, planX + planWidth, planTop + 14, 0.7, '0.26 0.32 0.44');
+  commands += drawLine(planX, planTop + 9, planX, planTop + 19, 0.7, '0.26 0.32 0.44');
+  commands += drawLine(planX + planWidth, planTop + 9, planX + planWidth, planTop + 19, 0.7, '0.26 0.32 0.44');
+  commands += textCommand(`${moduleLength} m`, planX + planWidth / 2 - 10, planTop + 20, 8, true);
+  commands += drawLine(planX - 14, planTop, planX - 14, planBottom, 0.7, '0.26 0.32 0.44');
+  commands += drawLine(planX - 19, planTop, planX - 9, planTop, 0.7, '0.26 0.32 0.44');
+  commands += drawLine(planX - 19, planBottom, planX - 9, planBottom, 0.7, '0.26 0.32 0.44');
+  commands += textCommand(`${moduleWidth} m`, planX - 32, planBottom + planHeight / 2, 8, true);
+
+  // Fondo y reticula tipo plano
+  commands += `1 1 1 rg ${planX.toFixed(2)} ${planBottom.toFixed(2)} ${planWidth.toFixed(2)} ${planHeight.toFixed(2)} re f\n`;
+  commands += '0.88 0.92 0.97 RG 0.25 w\n';
+  const gridX = Math.max(12, planWidth / Math.max(moduleLength * 2, 1));
+  const gridY = Math.max(12, planHeight / Math.max(moduleWidth * 2, 1));
+  for (let gx = planX + gridX; gx < planX + planWidth; gx += gridX) commands += `${gx.toFixed(2)} ${planBottom.toFixed(2)} m ${gx.toFixed(2)} ${planTop.toFixed(2)} l S\n`;
+  for (let gy = planBottom + gridY; gy < planTop; gy += gridY) commands += `${planX.toFixed(2)} ${gy.toFixed(2)} m ${(planX + planWidth).toFixed(2)} ${gy.toFixed(2)} l S\n`;
+
+  // Divisiones primero
+  items.filter((item) => ['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType)).forEach((item) => {
+    const rx = px(Number(item.x || 0));
+    const rh = ph(Number(item.height || 0));
+    const ry = py(Number(item.y || 0)) - rh;
+    const rw = pw(Number(item.width || 0));
+
+    if (item.itemType === 'wall_partition') {
+      commands += drawRect(rx, ry, Math.max(rw, 3), Math.max(rh, 2), '0.10 0.14 0.20', 1, '0.10 0.14 0.20');
+      return;
+    }
+
+    const fill = item.itemType === 'full_bathroom' ? '0.90 0.98 0.98' : '0.95 0.97 1';
+    const stroke = item.itemType === 'full_bathroom' ? '0.06 0.55 0.52' : '0.15 0.23 0.42';
+    commands += drawRect(rx, ry, rw, rh, stroke, 1.4, fill);
+    commands += textCommand(planLabel(item), rx + 5, ry + rh - 12, 7, true);
+    commands += textCommand(`${roomDepthMeters(item, moduleLength, moduleWidth).toLocaleString('es-ES')} m`, rx + 5, ry + 8, 7, true);
+
+    if (item.itemType === 'interior_room') {
+      commands += drawLine(rx + rw * 0.12, ry + rh, rx + rw * 0.34, ry + rh - rh * 0.25, 1, '0.15 0.23 0.42');
+      commands += drawRect(rx + rw * 0.56, ry + rh - 8, Math.max(16, rw * 0.25), 3, '0.06 0.45 0.80', 0.8, '0.70 0.90 1');
+      commands += drawCircle(rx + rw * 0.55, ry + rh * 0.48, 5, '0.90 0.52 0.08', 0.8);
+      commands += drawLine(rx + rw * 0.51, ry + rh * 0.44, rx + rw * 0.59, ry + rh * 0.52, 0.8, '0.90 0.52 0.08');
+      commands += drawLine(rx + rw * 0.59, ry + rh * 0.44, rx + rw * 0.51, ry + rh * 0.52, 0.8, '0.90 0.52 0.08');
+      commands += drawCircle(rx + rw * 0.74, ry + rh * 0.32, 4, '0.05 0.09 0.16', 0.8);
+      commands += textCommand('T', rx + rw * 0.72, ry + rh * 0.29, 5, true);
+    }
+
+    if (item.itemType === 'full_bathroom') {
+      commands += drawRect(rx + rw * 0.60, ry + rh * 0.10, Math.max(16, rw * 0.28), Math.max(14, rh * 0.30), '0.06 0.55 0.52', 0.9);
+      commands += drawCircle(rx + rw * 0.26, ry + rh * 0.35, 6, '0.06 0.55 0.52', 0.9);
+      commands += drawRect(rx + rw * 0.18, ry + rh * 0.58, Math.max(14, rw * 0.22), Math.max(8, rh * 0.13), '0.06 0.55 0.52', 0.9);
+      commands += drawLine(rx + rw * 0.08, ry + rh, rx + rw * 0.28, ry + rh - rh * 0.24, 1, '0.06 0.55 0.52');
+      commands += drawRect(rx + rw * 0.62, ry + rh - 7, Math.max(12, rw * 0.18), 3, '0.06 0.45 0.80', 0.8, '0.70 0.90 1');
+      commands += textCommand('V 40x40', rx + rw * 0.61, ry + rh - 11, 5, true);
+      commands += drawCircle(rx + rw * 0.48, ry + rh * 0.49, 4, '0.90 0.52 0.08', 0.8);
+      commands += textCommand('PL', rx + rw * 0.44, ry + rh * 0.46, 5, true);
+      commands += textCommand('T', rx + rw * 0.72, ry + rh * 0.55, 5, true);
+      commands += textCommand('Termo', rx + rw * 0.70, ry + rh * 0.46, 5);
+    }
   });
-  commands += textCommand('Leyenda: P=Puerta · V=Ventana · T=Enchufe · PL=Punto de luz · CE=Cuadro electrico · A/A=Aire acondicionado · H=Habitacion · B=Bano', x, y - height - 14, 7);
+
+  // Muros perimetrales encima de la reticula y divisiones
+  commands += drawRect(planX, planBottom, planWidth, planHeight, '0.03 0.05 0.10', wallThickness);
+
+  // Aperturas en muros
+  items.filter(isEdgeOpening).forEach((item) => {
+    const side = edgeSideFor(item);
+    const isLargeWindow = item.itemType === 'large_window';
+    const openingMeters = isDoor(item) || isWindow80(item) ? 0.8 : isLargeWindow ? 1.2 : 0.8;
+    const openingW = (openingMeters / moduleLength) * planWidth;
+    const openingH = (openingMeters / moduleWidth) * planHeight;
+    const itemX = px(Number(item.x || 0));
+    const itemY = py(Number(item.y || 0));
+
+    if (side === 'top' || side === 'bottom') {
+      const ox = Math.max(planX + 2, Math.min(itemX, planX + planWidth - openingW - 2));
+      const oy = side === 'top' ? planTop : planBottom;
+      commands += drawLine(ox, oy, ox + openingW, oy, wallThickness + 1.5, '1 1 1');
+
+      if (isDoor(item)) {
+        const swing = Math.min(openingW, planHeight * 0.35);
+        const dir = side === 'top' ? -1 : 1;
+        commands += drawLine(ox, oy, ox, oy + swing * dir, 1.1, '0.03 0.05 0.10');
+        commands += drawLine(ox, oy, ox + openingW, oy, 1.1, '0.03 0.05 0.10');
+        commands += `${'0.03 0.05 0.10'} RG 0.7 w ${ox.toFixed(2)} ${(oy + swing * dir).toFixed(2)} m ${(ox + openingW * 0.55).toFixed(2)} ${(oy + swing * 0.95 * dir).toFixed(2)} ${(ox + openingW).toFixed(2)} ${(oy + swing * 0.55 * dir).toFixed(2)} ${(ox + openingW).toFixed(2)} ${oy.toFixed(2)} c S\n`;
+        commands += textCommand('P 80', ox + 2, oy + (side === 'top' ? 8 : -10), 6, true);
+      } else {
+        commands += drawLine(ox, oy + 3, ox + openingW, oy + 3, 1, '0.00 0.45 0.85');
+        commands += drawLine(ox, oy - 3, ox + openingW, oy - 3, 1, '0.00 0.45 0.85');
+        commands += textCommand(isLargeWindow ? 'VG' : 'V 80', ox + 2, oy + (side === 'top' ? 8 : -10), 6, true);
+      }
+      return;
+    }
+
+    const ox = side === 'left' ? planX : planX + planWidth;
+    const oy = Math.max(planBottom + 2, Math.min(itemY, planTop - openingH - 2));
+    commands += drawLine(ox, oy, ox, oy + openingH, wallThickness + 1.5, '1 1 1');
+    if (isDoor(item)) {
+      const swing = Math.min(openingH, planWidth * 0.12);
+      const dir = side === 'left' ? 1 : -1;
+      commands += drawLine(ox, oy + openingH, ox + swing * dir, oy + openingH, 1.1, '0.03 0.05 0.10');
+      commands += drawLine(ox, oy, ox, oy + openingH, 1.1, '0.03 0.05 0.10');
+      commands += textCommand('P 80', ox + (side === 'left' ? 5 : -22), oy + openingH / 2, 6, true);
+    } else {
+      commands += drawLine(ox + 3, oy, ox + 3, oy + openingH, 1, '0.00 0.45 0.85');
+      commands += drawLine(ox - 3, oy, ox - 3, oy + openingH, 1, '0.00 0.45 0.85');
+      commands += textCommand(isLargeWindow ? 'VG' : 'V 80', ox + (side === 'left' ? 5 : -22), oy + openingH / 2, 6, true);
+    }
+  });
+
+  // Elementos interiores sueltos
+  items.filter((item) => !isEdgeOpening(item) && !['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType)).forEach((item) => {
+    const cx = px(Number(item.x || 0) + Number(item.width || 0) / 2);
+    const cy = py(Number(item.y || 0) + Number(item.height || 0) / 2);
+    const label = planLabel(item);
+
+    if (item.itemType === 'base_socket' || item.itemType === 'additional_socket') {
+      commands += drawCircle(cx, cy, 5, '0.05 0.09 0.16', 0.9);
+      commands += drawLine(cx - 4, cy, cx + 4, cy, 0.8, '0.05 0.09 0.16');
+      commands += textCommand('T', cx - 3, cy - 12, 6, Boolean(item.included));
+      return;
+    }
+
+    if (item.itemType === 'base_light_point') {
+      commands += drawCircle(cx, cy, 6, '0.90 0.52 0.08', 0.9);
+      commands += drawLine(cx - 4, cy - 4, cx + 4, cy + 4, 0.8, '0.90 0.52 0.08');
+      commands += drawLine(cx + 4, cy - 4, cx - 4, cy + 4, 0.8, '0.90 0.52 0.08');
+      commands += textCommand('PL', cx - 5, cy - 14, 6, Boolean(item.included));
+      return;
+    }
+
+    if (item.itemType === 'base_electrical_panel') {
+      commands += drawRect(cx - 14, cy - 8, 28, 16, '0.05 0.09 0.16', 0.9);
+      commands += textCommand('CE', cx - 6, cy - 3, 6, true);
+      return;
+    }
+
+    if (item.itemType === 'air_conditioning') {
+      commands += drawRect(cx - 16, cy - 8, 32, 16, '0.35 0.20 0.75', 0.9);
+      commands += textCommand('A/A', cx - 7, cy - 3, 6, true);
+      return;
+    }
+
+    commands += textCommand(label, cx - 4, cy, 6, Boolean(item.included));
+  });
+
+  commands += textCommand('Leyenda: P=Puerta  V=Ventana  VG=Ventana grande  T=Enchufe  PL=Punto de luz  CE=Cuadro electrico  A/A=Aire acondicionado', x, planBottom - 10, 6);
+  commands += textCommand('Plano orientativo sujeto a revision tecnica antes de fabricacion.', x, planBottom - 20, 6, true);
+
   return commands;
 };
 
@@ -132,14 +341,15 @@ export const downloadQuotePdf = (lead: LeadRow, quote: QuoteRow) => {
   let y = 800;
   let content = '';
 
-  // Header
-  content += '0.06 0.09 0.16 rg 0 808 595 34 re f\n';
+  // Header limpio, con altura suficiente para evitar solapes en visor PDF.
+  content += '0.06 0.09 0.16 rg 0 780 595 62 re f\n';
   content += '1 1 1 rg\n';
-  content += textCommand('Presupuesto orientativo', 45, 820, 18, true);
-  content += textCommand(company.name, 45, 805, 10);
+  content += textCommand('Presupuesto / Factura proforma orientativa', 45, 816, 17, true);
+  content += textCommand(company.name, 45, 796, 10);
+  content += textCommand('Documento orientativo sujeto a revision tecnica', 365, 796, 9);
   content += '0.05 0.09 0.16 rg\n';
 
-  y = 770;
+  y = 750;
   content += textCommand('Datos de empresa', 45, y, 12, true);
   content += textCommand('Datos del cliente', 325, y, 12, true);
   y -= 18;
@@ -202,8 +412,8 @@ export const downloadQuotePdf = (lead: LeadRow, quote: QuoteRow) => {
   }
 
   if (config) {
-    content += planCommands(config, 45, y - 10, 310, 105);
-    y -= 145;
+    content += planCommands(config, 45, y - 2, 330, 128);
+    y -= 172;
   }
 
   // Economic box
