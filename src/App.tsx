@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PublicLanding } from './components/PublicLanding';
+import { PublicLanding } from './components/PublicLandingFixed';
 import { Configurator } from './components/Configurator';
 import { AdminPanel } from './components/AdminPanel';
 import { FaqChatbot } from './components/FaqChatbot';
