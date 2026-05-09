@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PublicLanding } from './components/PublicLandingFixed';
 import { Configurator } from './components/Configurator';
 import { AdminPanel } from './components/AdminPanel';
@@ -9,14 +9,38 @@ import { LegalPages, LegalPageType } from './components/LegalPages';
 
 type View = 'public' | 'configurator' | 'admin' | 'legal';
 
+const hasAdminEntry = () => {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.get('admin') === '1' || window.location.hash === '#admin';
+};
+
 export default function App() {
-  const [view, setView] = useState<View>('public');
+  const [view, setView] = useState<View>(() => (hasAdminEntry() ? 'admin' : 'public'));
   const [legalPage, setLegalPage] = useState<LegalPageType>('aviso-legal');
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      if (hasAdminEntry()) setView('admin');
+    };
+
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => window.removeEventListener('hashchange', handleUrlChange);
+  }, []);
 
   const openLegalPage = (page: LegalPageType) => {
     setLegalPage(page);
     setView('legal');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openAdmin = () => {
+    if (hasAdminEntry()) {
+      setView('admin');
+      return;
+    }
+
+    window.alert('Área privada. Accede desde la URL interna de administración.');
   };
 
   if (view === 'legal') {
@@ -31,7 +55,7 @@ export default function App() {
   if (view === 'configurator') {
     return (
       <>
-        <Configurator onBack={() => setView('public')} onAdmin={() => setView('admin')} />
+        <Configurator onBack={() => setView('public')} onAdmin={openAdmin} />
         <CompanyFooter onLegalPage={openLegalPage} />
         <CookieBanner onLegalPage={openLegalPage} />
         <FaqChatbot onStartConfigurator={() => setView('configurator')} />
@@ -45,7 +69,7 @@ export default function App() {
 
   return (
     <>
-      <PublicLanding onStart={() => setView('configurator')} onAdmin={() => setView('admin')} />
+      <PublicLanding onStart={() => setView('configurator')} onAdmin={openAdmin} />
       <CompanyFooter onLegalPage={openLegalPage} />
       <CookieBanner onLegalPage={openLegalPage} />
       <FaqChatbot onStartConfigurator={() => setView('configurator')} />
