@@ -1,25 +1,22 @@
-# ✅ VERSIÓN SOLUCIONADA: plano 2D técnico + newsletter
+# Módulos Prefabricados San José S.L.
 
-Esta carpeta contiene cambios visibles para comprobar que estás ejecutando la versión correcta:
+Aplicación web comercial para captar solicitudes de presupuesto de casetas y módulos prefabricados a medida con panel sándwich.
 
-- En la portada aparece una sección naranja con el texto **“Nuevo configurador disponible”**.
-- Al entrar al configurador aparece un aviso con **“Versión solucionada”**.
-- En el paso 4, el plano permite seleccionar elementos, moverlos, rotarlos, duplicarlos y eliminar extras.
-- En el último paso aparece **“Descargar plano + presupuesto”**.
-- Ese botón abre el modal **“Recibe tu plano y presupuesto orientativo”** con privacidad obligatoria y newsletter opcional.
+## Funcionalidades principales
 
-Ejecuta `supabase/schema.sql` en Supabase antes de probar el guardado real de leads.
+- Landing comercial orientada a SEO local para Sevilla y Andalucía.
+- Calculadora de precio orientativo.
+- Configurador visual 2D del módulo.
+- Descarga de plano y presupuesto orientativo en PDF.
+- Captación de leads en Supabase.
+- Newsletter opcional.
+- Panel privado para gestionar solicitudes.
+- Mensaje preparado para WhatsApp.
 
-# Calculadora de Casetas Prefabricadas - Fase 5
+## Precio orientativo configurado
 
-Aplicación web para Módulos Prefabricados San José S.L. con configurador visual 2D tipo plano técnico sencillo.
-
-## Novedades de esta fase
-
-- Eliminada la horquilla de precios.
-- Precio principal único: **precio estimado sin IVA**.
-- Modelo de referencia real: **6 x 2,40 m = 4.750 € sin IVA**.
-- Para otras medidas se usa cálculo orientativo de **330 €/m²**.
+- Modelo de referencia: **6 x 2,40 m = 4.750 € sin IVA**.
+- Para otras medidas se usa un cálculo orientativo de **330 €/m²**.
 - El precio base incluye:
   - 1 puerta.
   - 1 ventana 80x80.
@@ -27,7 +24,7 @@ Aplicación web para Módulos Prefabricados San José S.L. con configurador visu
   - 1 enchufe.
   - 1 punto de luz.
   - cuadro eléctrico.
-- Extras reales:
+- Extras configurados:
   - enchufe adicional: 50 €.
   - puerta adicional: 120 €.
   - ventana 80x80 extra: 200 €.
@@ -35,11 +32,19 @@ Aplicación web para Módulos Prefabricados San José S.L. con configurador visu
   - aire acondicionado: 600 €.
   - baño completo: 1.500 €.
   - habitación interior: 300 €.
-- Plano 2D más técnico, estilo AutoCAD sencillo.
-- Elementos movibles y con rotación 0º, 90º, 180º y 270º.
-- Distribución guardada en `layout_json`.
-- Panel privado actualizado.
-- PDF actualizado sin horquilla de precios.
+
+> Los precios son orientativos. El presupuesto final debe confirmarse tras revisar medidas finales, extras, transporte, montaje y viabilidad técnica.
+
+## Variables de entorno obligatorias
+
+La aplicación necesita Supabase para guardar solicitudes y acceder al panel privado. Configura estas variables en Vercel y en local:
+
+```env
+VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA
+```
+
+No hay claves fallback dentro del código. Si estas variables no están configuradas, el guardado de solicitudes y el panel no funcionarán correctamente.
 
 ## Ejecutar en local
 
@@ -54,22 +59,55 @@ Abrir:
 http://localhost:5173
 ```
 
-## Supabase
+## Compilar para producción
 
-1. Copia `.env.example` como `.env`.
-2. Añade tus claves:
-
-```env
-VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
-VITE_SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA
+```bash
+npm run build
 ```
 
+## Supabase
+
+1. Copia `.env.example` como `.env` si trabajas en local.
+2. Añade `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
 3. Ejecuta `supabase/schema.sql` en Supabase > SQL Editor.
 4. Crea un usuario administrador en Supabase Auth.
+5. Revisa las políticas RLS antes de publicar definitivamente.
 
-## Si npm install falla en Windows
+## Acceso al panel privado
 
-Ejecuta:
+El acceso público al panel está oculto en la navegación. Para entrar al panel utiliza una URL interna:
+
+```text
+https://TU-DOMINIO.com/?admin=1
+```
+
+También funciona:
+
+```text
+https://TU-DOMINIO.com/#admin
+```
+
+Después será necesario iniciar sesión con el usuario administrador de Supabase Auth.
+
+## Despliegue en Vercel
+
+1. Importa el repositorio en Vercel.
+2. Añade las variables de entorno de Supabase.
+3. Comprueba que el dominio definitivo apunta a la web.
+4. Ejecuta un despliegue nuevo.
+5. Revisa que `/robots.txt` y `/sitemap.xml` cargan correctamente.
+
+## Seguridad básica añadida
+
+El archivo `vercel.json` añade cabeceras básicas:
+
+- `X-Content-Type-Options`
+- `X-Frame-Options`
+- `Referrer-Policy`
+- `Permissions-Policy`
+- caché larga para imágenes y assets
+
+## Si `npm install` falla en Windows
 
 ```powershell
 npm config set registry https://registry.npmjs.org/
