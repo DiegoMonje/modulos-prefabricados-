@@ -58,6 +58,7 @@ export interface LayoutItem {
   layoutOrientation?: 'transversal' | 'longitudinal';
   roomWidthMeters?: number;
   showerTrayWidthMeters?: 0.9 | 1 | null;
+  hasShowerTray?: boolean;
   includedFeatures?: string[];
 }
 
@@ -103,7 +104,10 @@ export interface LayoutSummary {
   windows80x80: number;
   largeWindows: number;
   interiorRooms: number;
+  fullBathrooms: number;
+  bathroomsWithoutShowerTray: number;
   hasFullBathroom: boolean;
+  hasBathroomShowerTray: boolean;
   hasAirConditioning: boolean;
   extrasList: string[];
   includedList: string[];
