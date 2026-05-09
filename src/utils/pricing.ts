@@ -12,9 +12,22 @@ export const SHORT_MODULE_SURCHARGE_BY_LENGTH: Record<number, number> = {
   5: 0.10,
 };
 export const VAT_RATE = 0.21;
+export const WALL_PARTITION_PRICE = 300;
+export const INTERIOR_ROOM_PRICE = 700;
+export const FULL_BATHROOM_PRICE = 1500;
+export const SHOWER_TRAY_DISCOUNT = 100;
 
-export const ROOM_INCLUDED_FEATURES = ['puerta', 'ventana', 'punto de luz', 'enchufe'];
-export const BATHROOM_INCLUDED_FEATURES = ['puerta', 'ventana 40x40', 'punto de luz', 'enchufe interior', 'enchufe exterior para termo eléctrico'];
+export const ROOM_INCLUDED_FEATURES = ['puerta', 'ventana 80x80', 'punto de luz', 'enchufe'];
+export const BATHROOM_INCLUDED_FEATURES = [
+  'puerta',
+  'ventana 40x40',
+  'punto de luz',
+  'enchufe interior',
+  'enchufe exterior para termo eléctrico',
+  'lavabo',
+  'váter',
+  'plato de ducha opcional',
+];
 
 export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price: number; width: number; height: number; zone: 'edge' | 'inside'; included?: boolean }> = {
   base_door: { label: 'Puerta incluida', price: 0, width: 12, height: 7, zone: 'edge', included: true },
@@ -26,10 +39,10 @@ export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price:
   additional_door: { label: 'Puerta adicional', price: 120, width: 12, height: 7, zone: 'edge' },
   window_80x80: { label: 'Ventana 80x80 extra', price: 200, width: 13, height: 5, zone: 'edge' },
   large_window: { label: 'Ventana grande', price: 250, width: 18, height: 5, zone: 'edge' },
-  interior_room: { label: 'Habitación interior', price: 700, width: 28, height: 22, zone: 'inside' },
-  full_bathroom: { label: 'Baño completo', price: 1500, width: 20, height: 18, zone: 'inside' },
+  interior_room: { label: 'Habitación interior', price: INTERIOR_ROOM_PRICE, width: 28, height: 22, zone: 'inside' },
+  full_bathroom: { label: 'Baño completo', price: FULL_BATHROOM_PRICE, width: 20, height: 18, zone: 'inside' },
   air_conditioning: { label: 'Aire acondicionado', price: 600, width: 14, height: 8, zone: 'inside' },
-  wall_partition: { label: 'Tabique interior', price: 0, width: 100, height: 3, zone: 'inside' },
+  wall_partition: { label: 'Tabique simple', price: WALL_PARTITION_PRICE, width: 100, height: 3, zone: 'inside' },
 };
 
 export const createBaseLayoutItems = (): LayoutItem[] => [
@@ -59,6 +72,13 @@ const getShortModuleSurchargeRate = (length: number) => {
   return matchedLength ? SHORT_MODULE_SURCHARGE_BY_LENGTH[matchedLength] : 0;
 };
 
+const isBathroomWithoutShowerTray = (item: LayoutItem) => item.itemType === 'full_bathroom' && item.hasShowerTray === false;
+
+export const getLayoutItemPrice = (item: LayoutItem) => {
+  if (isBathroomWithoutShowerTray(item)) return Math.max(0, item.price - SHOWER_TRAY_DISCOUNT);
+  return item.price;
+};
+
 export const calculateBasePrice = (config: Pick<ConfiguratorState, 'length' | 'width'>): number => {
   const squareMeters = Number((config.length * config.width).toFixed(2));
   if (isReferenceModule(config as ConfiguratorState)) return REFERENCE_BASE_PRICE;
@@ -78,7 +98,10 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
   const windows80x80 = count('window_80x80');
   const largeWindows = count('large_window');
   const interiorRooms = count('interior_room');
-  const hasFullBathroom = count('full_bathroom') > 0;
+  const fullBathrooms = count('full_bathroom');
+  const bathroomsWithoutShowerTray = items.filter(isBathroomWithoutShowerTray).length;
+  const hasFullBathroom = fullBathrooms > 0;
+  const hasBathroomShowerTray = items.some((item) => item.itemType === 'full_bathroom' && item.hasShowerTray !== false);
   const hasAirConditioning = count('air_conditioning') > 0;
   const wallPartitions = count('wall_partition');
   const includedSocketQuantity = count('base_socket');
@@ -102,9 +125,12 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
   if (windows80x80) extrasList.push(`${windows80x80} ventana(s) 80x80 extra`);
   if (largeWindows) extrasList.push(`${largeWindows} ventana(s) grande(s)`);
   if (interiorRooms) extrasList.push(`${interiorRooms} habitación(es) interior(es) · incluye ${ROOM_INCLUDED_FEATURES.join(', ')}`);
-  if (hasFullBathroom) extrasList.push(`baño completo · incluye ${BATHROOM_INCLUDED_FEATURES.join(', ')}`);
+  if (hasFullBathroom) {
+    const bathroomText = `baño completo · incluye ${BATHROOM_INCLUDED_FEATURES.join(', ')}`;
+    extrasList.push(bathroomsWithoutShowerTray ? `${bathroomText} · ${bathroomsWithoutShowerTray} sin plato de ducha (-${formatCurrency(SHOWER_TRAY_DISCOUNT)} c/u)` : bathroomText);
+  }
   if (hasAirConditioning) extrasList.push('aire acondicionado');
-  if (wallPartitions) extrasList.push(`${wallPartitions} tabique(s) interior(es)`);
+  if (wallPartitions) extrasList.push(`${wallPartitions} tabique(s) simple(s) · paneles + mano de obra`);
 
   return {
     includedDoor,
@@ -117,7 +143,10 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
     windows80x80,
     largeWindows,
     interiorRooms,
+    fullBathrooms,
+    bathroomsWithoutShowerTray,
     hasFullBathroom,
+    hasBathroomShowerTray,
     hasAirConditioning,
     extrasList,
     includedList,
@@ -129,7 +158,7 @@ export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
 export const calculatePrice = (config: ConfiguratorState): PriceResult => {
   const squareMeters = Number((config.length * config.width).toFixed(2));
   const basePrice = calculateBasePrice(config);
-  const extrasPrice = Math.round(config.layoutItems.reduce((sum, item) => sum + item.price, 0));
+  const extrasPrice = Math.round(config.layoutItems.reduce((sum, item) => sum + getLayoutItemPrice(item), 0));
   const estimatedPriceWithoutVat = basePrice + extrasPrice;
   const vatAmount = Math.round(estimatedPriceWithoutVat * VAT_RATE);
   const estimatedPriceWithVat = estimatedPriceWithoutVat + vatAmount;
