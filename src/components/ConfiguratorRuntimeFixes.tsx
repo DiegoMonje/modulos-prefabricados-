@@ -10,7 +10,9 @@ const FEATURE_PANEL_ID = 'runtime-plan-feature-panel';
 const ROOM_FEATURES_ID = 'runtime-room-feature-icons';
 const BATHROOM_FEATURES_ID = 'runtime-bathroom-feature-icons';
 
-const replaceVisibleTexts = (root: ParentNode = document) => {
+const replaceText = (value: string, search: string, replacement: string) => value.split(search).join(replacement);
+
+const replaceVisibleTexts = (root: Node = document) => {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
 
@@ -20,7 +22,7 @@ const replaceVisibleTexts = (root: ParentNode = document) => {
 
   nodes.forEach((node) => {
     const value = node.nodeValue || '';
-    const next = TEXT_REPLACEMENTS.reduce((text, [search, replacement]) => text.replaceAll(search, replacement), value);
+    const next = TEXT_REPLACEMENTS.reduce((text, [search, replacement]) => replaceText(text, search, replacement), value);
     if (next !== value) node.nodeValue = next;
   });
 };
