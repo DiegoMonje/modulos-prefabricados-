@@ -16,6 +16,7 @@ type PremiumPlanWorkbenchProps = {
   onDuplicate?: (id: string) => void;
   onRemove?: (id: string) => void;
   onChangeOrientation?: (id: string, orientation: 'transversal' | 'longitudinal') => void;
+  onToggleShowerTray?: (id: string, hasShowerTray: boolean) => void;
   disabledTools?: boolean;
 };
 
@@ -31,6 +32,7 @@ export const PremiumPlanWorkbench = ({
   onDuplicate,
   onRemove,
   onChangeOrientation,
+  onToggleShowerTray,
   disabledTools = false,
 }: PremiumPlanWorkbenchProps) => (
   <section className="rounded-[32px] border border-slate-200 bg-slate-100/80 p-3 shadow-inner md:p-5">
@@ -65,6 +67,7 @@ export const PremiumPlanWorkbench = ({
         onDuplicate={onDuplicate}
         onRemove={onRemove}
         onChangeOrientation={onChangeOrientation}
+        onToggleShowerTray={onToggleShowerTray}
       />
     </div>
   </section>
