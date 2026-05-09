@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PublicLanding } from './components/PublicLandingFixed';
 import { Configurator } from './components/Configurator';
+import { ConfiguratorRuntimeFixes } from './components/ConfiguratorRuntimeFixes';
 import { AdminPanel } from './components/AdminPanel';
 import { FaqChatbot } from './components/FaqChatbot';
 import { CompanyFooter } from './components/CompanyFooter';
@@ -55,6 +56,7 @@ export default function App() {
   if (view === 'configurator') {
     return (
       <>
+        <ConfiguratorRuntimeFixes />
         <Configurator onBack={() => setView('public')} onAdmin={openAdmin} />
         <CompanyFooter onLegalPage={openLegalPage} />
         <CookieBanner onLegalPage={openLegalPage} />
