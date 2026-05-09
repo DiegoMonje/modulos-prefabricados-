@@ -16,6 +16,7 @@ type InteractivePlanCanvasProps = LayoutPreviewProps & {
   onDuplicate?: (id: string) => void;
   onRemove?: (id: string) => void;
   onChangeOrientation?: (id: string, orientation: 'transversal' | 'longitudinal') => void;
+  onToggleShowerTray?: (id: string, hasShowerTray: boolean) => void;
   disabledTools?: boolean;
 };
 
@@ -30,6 +31,7 @@ export const InteractivePlanCanvas = ({
   onDuplicate,
   onRemove,
   onChangeOrientation,
+  onToggleShowerTray,
   disabledTools,
   ...layoutPreviewProps
 }: InteractivePlanCanvasProps) => (
@@ -44,6 +46,7 @@ export const InteractivePlanCanvas = ({
     onDuplicate={onDuplicate}
     onRemove={onRemove}
     onChangeOrientation={onChangeOrientation}
+    onToggleShowerTray={onToggleShowerTray}
     disabledTools={disabledTools}
   >
     <LayoutPreview {...layoutPreviewProps} />
