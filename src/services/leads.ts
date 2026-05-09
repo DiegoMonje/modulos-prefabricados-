@@ -8,87 +8,101 @@ const assertSupabase = () => {
   return supabase;
 };
 
+const logLeadPersistenceWarning = (error: unknown) => {
+  console.warn('No se pudo guardar la solicitud en Supabase. El cliente podrá continuar con el PDF y WhatsApp.', error);
+};
+
 export const createLead = async ({ contact, config, price }: NewLeadPayload): Promise<string> => {
-  const client = assertSupabase();
   const leadId = crypto.randomUUID();
   const downloadedAt = new Date().toISOString();
 
-  const { error: leadError } = await client
-    .from('leads')
-    .insert({
-      id: leadId,
-      full_name: contact.fullName,
-      phone: contact.phone,
-      email: contact.email || null,
-      province: config.province,
-      city: config.city,
-      postal_code: config.postalCode || null,
-      intended_use: contact.intendedUse || config.useType,
-      comments: contact.comments || null,
-      status: 'Nuevo',
-      estimated_min_price: price.estimatedPriceWithoutVat,
-      estimated_max_price: price.estimatedPriceWithoutVat,
-      estimated_price_without_vat: price.estimatedPriceWithoutVat,
-      estimated_vat_amount: price.vatAmount,
-      estimated_price_with_vat: price.estimatedPriceWithVat,
-      newsletter_subscribed: contact.newsletterSubscribed,
-      privacy_accepted: contact.accepted,
-      download_requested: true,
-      downloaded_at: downloadedAt,
-      lead_source: 'configurador_plano_2d',
+  if (!isSupabaseConfigured || !supabase) {
+    logLeadPersistenceWarning('Supabase no está configurado.');
+    return leadId;
+  }
+
+  const client = supabase;
+
+  try {
+    const { error: leadError } = await client
+      .from('leads')
+      .insert({
+        id: leadId,
+        full_name: contact.fullName,
+        phone: contact.phone,
+        email: contact.email || null,
+        province: config.province,
+        city: config.city,
+        postal_code: config.postalCode || null,
+        intended_use: contact.intendedUse || config.useType,
+        comments: contact.comments || null,
+        status: 'Nuevo',
+        estimated_min_price: price.estimatedPriceWithoutVat,
+        estimated_max_price: price.estimatedPriceWithoutVat,
+        estimated_price_without_vat: price.estimatedPriceWithoutVat,
+        estimated_vat_amount: price.vatAmount,
+        estimated_price_with_vat: price.estimatedPriceWithVat,
+        newsletter_subscribed: contact.newsletterSubscribed,
+        privacy_accepted: contact.accepted,
+        download_requested: true,
+        downloaded_at: downloadedAt,
+        lead_source: 'configurador_plano_2d',
+      });
+
+    if (leadError) throw leadError;
+
+    const summary = price.summary;
+    const { error: configError } = await client.from('configurations').insert({
+      lead_id: leadId,
+      length: config.length,
+      width: config.width,
+      square_meters: price.squareMeters,
+      is_special_measure: config.isSpecialMeasure,
+      panel_type: config.panelType,
+      panel_thickness: config.panelThickness,
+      panel_color: config.panelColor,
+      is_special_panel: config.isSpecialPanel,
+      use_type: config.useType,
+      door_type: 'Puerta incluida + adicionales',
+      door_quantity: summary.additionalDoors,
+      window_quantity: summary.windows80x80 + summary.largeWindows,
+      extras: summary.extrasList,
+      transport_required: false,
+      assembly_required: false,
+      delivery_timeline: config.deliveryTimeline,
+      base_included_door: summary.includedDoor,
+      base_included_window_80x80: summary.includedWindow80x80,
+      base_included_electrical_installation: true,
+      base_included_socket_quantity: summary.includedSocketQuantity,
+      base_included_light_point_quantity: summary.includedLightPointQuantity,
+      has_air_conditioning: summary.hasAirConditioning,
+      has_electrical_installation: true,
+      has_full_bathroom: summary.hasFullBathroom,
+      interior_rooms_quantity: summary.interiorRooms,
+      extra_windows_80x80_quantity: summary.windows80x80,
+      extra_large_windows_quantity: summary.largeWindows,
+      additional_doors_quantity: summary.additionalDoors,
+      additional_socket_quantity: summary.additionalSockets,
+      layout_json: config.layoutItems,
     });
 
-  if (leadError) throw leadError;
+    if (configError) throw configError;
 
-  const summary = price.summary;
-  const { error: configError } = await client.from('configurations').insert({
-    lead_id: leadId,
-    length: config.length,
-    width: config.width,
-    square_meters: price.squareMeters,
-    is_special_measure: config.isSpecialMeasure,
-    panel_type: config.panelType,
-    panel_thickness: config.panelThickness,
-    panel_color: config.panelColor,
-    is_special_panel: config.isSpecialPanel,
-    use_type: config.useType,
-    door_type: 'Puerta incluida + adicionales',
-    door_quantity: summary.additionalDoors,
-    window_quantity: summary.windows80x80 + summary.largeWindows,
-    extras: summary.extrasList,
-    transport_required: false,
-    assembly_required: false,
-    delivery_timeline: config.deliveryTimeline,
-    base_included_door: summary.includedDoor,
-    base_included_window_80x80: summary.includedWindow80x80,
-    base_included_electrical_installation: true,
-    base_included_socket_quantity: summary.includedSocketQuantity,
-    base_included_light_point_quantity: summary.includedLightPointQuantity,
-    has_air_conditioning: summary.hasAirConditioning,
-    has_electrical_installation: true,
-    has_full_bathroom: summary.hasFullBathroom,
-    interior_rooms_quantity: summary.interiorRooms,
-    extra_windows_80x80_quantity: summary.windows80x80,
-    extra_large_windows_quantity: summary.largeWindows,
-    additional_doors_quantity: summary.additionalDoors,
-    additional_socket_quantity: summary.additionalSockets,
-    layout_json: config.layoutItems,
-  });
+    if (contact.newsletterSubscribed) {
+      const { error: subscriberError } = await client.from('newsletter_subscribers').insert({
+        full_name: contact.fullName,
+        email: contact.email,
+        phone: contact.phone,
+        province: config.province,
+        city: config.city,
+        source: 'configurador_plano_2d',
+        active: true,
+      });
 
-  if (configError) throw configError;
-
-  if (contact.newsletterSubscribed) {
-    const { error: subscriberError } = await client.from('newsletter_subscribers').insert({
-      full_name: contact.fullName,
-      email: contact.email,
-      phone: contact.phone,
-      province: config.province,
-      city: config.city,
-      source: 'configurador_plano_2d',
-      active: true,
-    });
-
-    if (subscriberError) throw subscriberError;
+      if (subscriberError) logLeadPersistenceWarning(subscriberError);
+    }
+  } catch (error) {
+    logLeadPersistenceWarning(error);
   }
 
   return leadId;
