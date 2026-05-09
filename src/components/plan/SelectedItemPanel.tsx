@@ -1,10 +1,12 @@
-import { Copy, Lock, RotateCw, Trash2 } from 'lucide-react';
+import { Bath, CheckCircle2, Copy, Lock, RotateCw, ShowerHead, Trash2 } from 'lucide-react';
 import { LayoutItem } from '../../types';
+import { formatCurrency, SHOWER_TRAY_DISCOUNT } from '../../utils/pricing';
 import {
   canDuplicatePlanItem,
   canOrientPlanItem,
   canRemovePlanItem,
   canRotatePlanItem,
+  canToggleShowerTray,
   getPlanItemHelpText,
   getPlanItemLabel,
   getPlanItemPositionLabel,
@@ -18,7 +20,52 @@ type SelectedItemPanelProps = {
   onDuplicate?: (id: string) => void;
   onRemove?: (id: string) => void;
   onChangeOrientation?: (id: string, orientation: 'transversal' | 'longitudinal') => void;
+  onToggleShowerTray?: (id: string, hasShowerTray: boolean) => void;
 };
+
+const RoomIncludedFeatures = () => (
+  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+    <p className="mb-3 flex items-center gap-2 text-sm font-black text-blue-950"><CheckCircle2 size={16} /> Incluido en la habitación</p>
+    <div className="grid grid-cols-2 gap-2 text-xs font-bold text-blue-900">
+      <span>🚪 Puerta</span>
+      <span>🪟 Ventana 80x80</span>
+      <span>💡 Punto de luz</span>
+      <span>🔌 Enchufe</span>
+    </div>
+  </div>
+);
+
+const BathroomIncludedFeatures = ({ hasShowerTray, onToggle }: { hasShowerTray: boolean; onToggle?: (value: boolean) => void }) => (
+  <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50 p-4">
+    <p className="mb-3 flex items-center gap-2 text-sm font-black text-teal-950"><Bath size={16} /> Incluido en el baño</p>
+    <div className="grid grid-cols-2 gap-2 text-xs font-bold text-teal-900">
+      <span>🚪 Puerta</span>
+      <span>🪟 Ventana 40x40</span>
+      <span>💡 Punto de luz</span>
+      <span>🔌 Enchufe interior</span>
+      <span>⚡ Enchufe exterior termo</span>
+      <span>🚽 Váter</span>
+      <span>🚰 Lavabo</span>
+      <span className={hasShowerTray ? '' : 'line-through opacity-60'}>🚿 Plato de ducha</span>
+    </div>
+
+    <div className="mt-4 rounded-xl bg-white p-3 shadow-sm ring-1 ring-teal-100">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-black text-slate-900"><ShowerHead size={16} /> Plato de ducha</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Opcional. Si el cliente no lo necesita, se descuenta {formatCurrency(SHOWER_TRAY_DISCOUNT)}.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggle?.(!hasShowerTray)}
+          className={`rounded-full px-3 py-1 text-xs font-black transition ${hasShowerTray ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}
+        >
+          {hasShowerTray ? 'Incluido' : 'Quitado'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 export const SelectedItemPanel = ({
   item,
@@ -26,6 +73,7 @@ export const SelectedItemPanel = ({
   onDuplicate,
   onRemove,
   onChangeOrientation,
+  onToggleShowerTray,
 }: SelectedItemPanelProps) => {
   if (!item) {
     return (
@@ -43,6 +91,8 @@ export const SelectedItemPanel = ({
   const duplicable = canDuplicatePlanItem(item);
   const rotatable = canRotatePlanItem(item);
   const orientable = canOrientPlanItem(item);
+  const showerTrayToggle = canToggleShowerTray(item);
+  const hasShowerTray = item.hasShowerTray !== false;
 
   return (
     <aside className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/5">
@@ -59,6 +109,9 @@ export const SelectedItemPanel = ({
         <p className="mt-1"><strong>Posición:</strong> {getPlanItemPositionLabel(item)}</p>
         <p className="mt-1"><strong>Rotación:</strong> {item.rotation}°</p>
       </div>
+
+      {item.itemType === 'interior_room' ? <RoomIncludedFeatures /> : null}
+      {showerTrayToggle ? <BathroomIncludedFeatures hasShowerTray={hasShowerTray} onToggle={(value) => onToggleShowerTray?.(item.id, value)} /> : null}
 
       {orientable ? (
         <div className="mt-4">
