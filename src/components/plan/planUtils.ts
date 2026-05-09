@@ -1,5 +1,5 @@
 import { LayoutItem, LayoutItemType } from '../../types';
-import { formatCurrency, LAYOUT_ITEM_CATALOG } from '../../utils/pricing';
+import { formatCurrency, getLayoutItemPrice, LAYOUT_ITEM_CATALOG, SHOWER_TRAY_DISCOUNT } from '../../utils/pricing';
 
 export type PlanToolCategoryId = 'openings' | 'electricity' | 'distribution' | 'comfort';
 
@@ -67,26 +67,26 @@ export const PLAN_TOOL_DEFINITIONS: PlanToolDefinition[] = [
   {
     type: 'wall_partition',
     category: 'distribution',
-    title: 'Tabique interior',
-    description: 'Marca una división interior orientativa.',
+    title: 'Tabique simple',
+    description: 'Añade un tabique con 3 paneles y mano de obra.',
     icon: 'wall',
-    commercialHint: 'Ayuda a visualizar separaciones antes del presupuesto final.',
+    commercialHint: 'Incluye 3 paneles y mano de obra. Ayuda a dividir el módulo de forma sencilla.',
   },
   {
     type: 'interior_room',
     category: 'distribution',
     title: 'Habitación interior',
-    description: 'Crea una estancia dentro del módulo.',
+    description: 'Crea una estancia con puerta, ventana 80x80, punto de luz y enchufe.',
     icon: 'room',
-    commercialHint: 'Incluye puerta, ventana, punto de luz y enchufe según configuración actual.',
+    commercialHint: 'Incluye puerta, ventana 80x80, punto de luz y enchufe.',
   },
   {
     type: 'full_bathroom',
     category: 'distribution',
     title: 'Baño completo',
-    description: 'Añade un baño completo orientativo.',
+    description: 'Añade baño con puerta, ventana 40x40, luz, enchufes, lavabo, váter y plato de ducha opcional.',
     icon: 'bath',
-    commercialHint: 'La ubicación final se confirma en revisión técnica.',
+    commercialHint: `Incluye puerta, ventana 40x40, punto de luz, enchufe interior, enchufe exterior para termo, lavabo, váter y plato de ducha opcional. Si se elimina el plato se descuentan ${formatCurrency(SHOWER_TRAY_DISCOUNT)}.`,
   },
   {
     type: 'air_conditioning',
@@ -105,13 +105,15 @@ export const getPlanItemLabel = (item: LayoutItem) => item.itemLabel || LAYOUT_I
 
 export const getPlanItemPriceLabel = (item: LayoutItem) => {
   if (item.included) return 'Incluido';
-  if (item.price > 0) return `+ ${formatCurrency(item.price)}`;
+  const price = getLayoutItemPrice(item);
+  if (item.itemType === 'full_bathroom' && item.hasShowerTray === false) return `+ ${formatCurrency(price)} · sin plato (-${formatCurrency(SHOWER_TRAY_DISCOUNT)})`;
+  if (price > 0) return `+ ${formatCurrency(price)}`;
   return 'Sin coste automático';
 };
 
 export const getPlanItemStatusLabel = (item: LayoutItem) => {
   if (item.included) return 'Elemento base incluido';
-  if (item.price > 0) return 'Extra presupuestado';
+  if (getLayoutItemPrice(item) > 0) return 'Extra presupuestado';
   return 'Elemento orientativo';
 };
 
@@ -125,6 +127,8 @@ export const canOrientPlanItem = (item?: LayoutItem | null) => {
   if (!item) return false;
   return ['wall_partition', 'interior_room', 'full_bathroom'].includes(item.itemType);
 };
+
+export const canToggleShowerTray = (item?: LayoutItem | null) => item?.itemType === 'full_bathroom';
 
 export const getPlanItemPositionLabel = (item?: LayoutItem | null) => {
   if (!item) return 'Sin elemento seleccionado';
