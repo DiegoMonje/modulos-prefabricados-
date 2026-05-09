@@ -105,7 +105,7 @@ const ModelThumbnail = ({ measure }: { measure: string }) => {
   );
 };
 
-export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdmin: () => void }) => {
+export const PublicLanding = ({ onStart }: { onStart: () => void; onAdmin: () => void }) => {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -125,7 +125,6 @@ export const PublicLanding = ({ onStart, onAdmin }: { onStart: () => void; onAdm
             <a href="#contacto" className="hover:text-brand-blue">Contacto</a>
           </nav>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onAdmin} className="hidden md:inline-flex">Panel</Button>
             <a href="tel:+34600227252" className="hidden sm:inline-flex">
               <Button variant="outline" className="flex items-center gap-2"><Phone size={18} /> Llamar</Button>
             </a>
