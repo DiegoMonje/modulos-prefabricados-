@@ -19,8 +19,8 @@ export const SHOWER_TRAY_DISCOUNT = 100;
 
 export const ROOM_INCLUDED_FEATURES = ['puerta', 'ventana 80x80', 'punto de luz', 'enchufe'];
 export const BATHROOM_INCLUDED_FEATURES = [
-  'puerta',
-  'ventana 80x80',
+  'puerta 80 cm',
+  'ventana 40x40',
   'punto de luz',
   'enchufe',
   'lavabo',
@@ -40,6 +40,9 @@ export const LAYOUT_ITEM_CATALOG: Record<LayoutItemType, { label: string; price:
   large_window: { label: 'Ventana grande', price: 250, width: 18, height: 5, zone: 'edge' },
   interior_room: { label: 'Habitación interior', price: INTERIOR_ROOM_PRICE, width: 28, height: 22, zone: 'inside' },
   full_bathroom: { label: 'Baño completo', price: FULL_BATHROOM_PRICE, width: 20, height: 18, zone: 'inside' },
+  bathroom_sink: { label: 'Lavabo incluido baño', price: 0, width: 8, height: 8, zone: 'inside', included: true },
+  bathroom_wc: { label: 'Váter incluido baño', price: 0, width: 8, height: 9, zone: 'inside', included: true },
+  bathroom_shower: { label: 'Plato de ducha incluido baño', price: 0, width: 12, height: 12, zone: 'inside', included: true },
   air_conditioning: { label: 'Aire acondicionado', price: 600, width: 14, height: 8, zone: 'inside' },
   wall_partition: { label: 'Tabique simple', price: WALL_PARTITION_PRICE, width: 100, height: 3, zone: 'inside' },
 };
