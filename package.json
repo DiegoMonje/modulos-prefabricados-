@@ -13,9 +13,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "konva": "^9.3.18",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-konva": "^19.0.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"
   },
