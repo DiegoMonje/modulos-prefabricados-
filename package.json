@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/patch-configurator-bathroom.cjs && node scripts/patch-cad-clean-labels.cjs",
+    "predev": "node scripts/patch-configurator-bathroom.cjs && node scripts/use-layout-preview-konva.cjs",
     "dev": "vite",
-    "prebuild": "node scripts/patch-configurator-bathroom.cjs && node scripts/patch-cad-clean-labels.cjs",
+    "prebuild": "node scripts/patch-configurator-bathroom.cjs && node scripts/use-layout-preview-konva.cjs",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
