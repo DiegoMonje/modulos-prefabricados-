@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PublicLanding } from './components/PublicLandingFixed';
-import { Configurator } from './components/Configurator';
+import { Configurator } from './components/ConfiguratorFixed';
 import { AdminPanel } from './components/AdminPanel';
 import { FaqChatbot } from './components/FaqChatbot';
 import { CompanyFooter } from './components/CompanyFooter';
