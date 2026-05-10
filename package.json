@@ -7,6 +7,7 @@
     "activate-konva-cad": "node scripts/use-layout-preview-konva.cjs",
     "patch-configurator-bathroom": "node scripts/patch-configurator-bathroom.cjs",
     "patch-cad-clean-labels": "node scripts/patch-cad-clean-labels.cjs",
+    "postinstall": "npm run activate-konva-cad",
     "predev": "npm run activate-konva-cad && npm run patch-configurator-bathroom && npm run patch-cad-clean-labels",
     "dev": "vite",
     "prebuild": "npm run activate-konva-cad && npm run patch-configurator-bathroom && npm run patch-cad-clean-labels",
