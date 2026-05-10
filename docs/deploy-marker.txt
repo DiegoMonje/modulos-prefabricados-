@@ -1,0 +1,6 @@
+Deploy marker para forzar un nuevo despliegue limpio en Vercel.
+
+Estado esperado:
+- Sin ProfessionalConfigurator.tsx experimental en uso.
+- Sin correcciones runtime del configurador.
+- Rama main recuperada a estado estable.
