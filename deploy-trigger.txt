@@ -1,2 +1,3 @@
 Deploy trigger for React Konva CAD activation.
 Date: 2026-05-10
+Trigger: after deleting old Vercel project casetas-calculator.
