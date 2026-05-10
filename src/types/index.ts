@@ -43,6 +43,32 @@ export type LayoutItemType =
   | 'air_conditioning'
   | 'wall_partition';
 
+export type PlanChildType =
+  | 'door'
+  | 'window_80x80'
+  | 'window_40x40'
+  | 'light_point'
+  | 'socket'
+  | 'inside_socket'
+  | 'water_heater_socket'
+  | 'sink'
+  | 'toilet'
+  | 'shower_tray';
+
+export interface PlanChildElement {
+  id: string;
+  type: PlanChildType;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: 0 | 90 | 180 | 270;
+  included?: boolean;
+  optional?: boolean;
+  lockedToParent?: boolean;
+}
+
 export interface LayoutItem {
   id: string;
   itemType: LayoutItemType;
@@ -60,6 +86,7 @@ export interface LayoutItem {
   showerTrayWidthMeters?: 0.9 | 1 | null;
   hasShowerTray?: boolean;
   includedFeatures?: string[];
+  childItems?: PlanChildElement[];
 }
 
 export interface ConfiguratorState {

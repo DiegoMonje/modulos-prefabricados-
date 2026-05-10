@@ -1,46 +1,77 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import {
   ArrowLeft,
-  ArrowRight,
+  Bath,
   CheckCircle2,
   Copy,
+  DoorOpen,
   Download,
-  Focus,
+  Grid2X2,
+  Home,
+  Lightbulb,
   MessageCircle,
   Move,
-  Redo2,
+  PlugZap,
   RotateCw,
-  Sparkles,
+  ShowerHead,
+  Snowflake,
   Trash2,
   Undo2,
-  X,
-  ZoomIn,
-  ZoomOut,
+  Zap,
 } from 'lucide-react';
-import { ConfiguratorState, ContactFormState, DeliveryTimeline, LayoutItem, LayoutItemType, PanelChoice, UseType } from '../types';
-import { calculatePrice, createBaseLayoutItems, formatCurrency, LAYOUT_ITEM_CATALOG } from '../utils/pricing';
+import {
+  ConfiguratorState,
+  ContactFormState,
+  DeliveryTimeline,
+  LayoutItem,
+  LayoutItemType,
+  PanelChoice,
+  PlanChildElement,
+  PlanChildType,
+  UseType,
+} from '../types';
+import {
+  calculatePrice,
+  createBaseLayoutItems,
+  formatCurrency,
+  getLayoutItemPrice,
+  LAYOUT_ITEM_CATALOG,
+  SHOWER_TRAY_DISCOUNT,
+} from '../utils/pricing';
 import { buildWhatsAppUrl } from '../utils/whatsapp';
 import { createLead } from '../services/leads';
 import { downloadConfiguratorPdf } from '../utils/pdf';
-import { Button, Card, Field, Input } from './Ui';
-import { LayoutPreview } from './LayoutPreview';
+import { Button, Card, Field, Input, Select, Textarea } from './Ui';
 
-const lengthOptions = [3, 4, 5, 6, 7, 8];
-const widthOptions = [
-  { label: '2,40 metros', value: 2.4, helper: 'Ancho estándar' },
-  { label: '2,50 metros', value: 2.5, helper: 'Opción habitual' },
-  { label: 'Otro ancho', value: null, helper: 'Bajo consulta' },
-] as const;
-const panelChoices: PanelChoice[] = ['Panel sándwich blanco 30 mm', 'Otro grosor de panel', 'Otro color de panel', 'Otro grosor y otro color'];
-const uses: UseType[] = ['Caseta de obra', 'Oficina', 'Almacén', 'Vestuario', 'Caseta para finca', 'Local comercial', 'Otro'];
-const timelines: DeliveryTimeline[] = ['Lo antes posible', 'En menos de 1 mes', 'En 1-3 meses', 'Más adelante', 'Solo estoy mirando precios'];
-const catalogOrder: LayoutItemType[] = ['additional_socket', 'additional_door', 'window_80x80', 'large_window', 'wall_partition', 'interior_room', 'full_bathroom', 'air_conditioning'];
-const GRID_SIZE = 2;
-const MIN_ROOM_DEPTH_PERCENT = 16;
-type ResizeHandle = 'bottom' | 'right';
+type Selection =
+  | { kind: 'item'; itemId: string }
+  | { kind: 'child'; itemId: string; childId: string }
+  | null;
 
-const makeInitialConfig = (): ConfiguratorState => ({
+type DragState =
+  | { kind: 'item'; itemId: string; offsetX: number; offsetY: number; snapshot: LayoutItem[] }
+  | { kind: 'child'; itemId: string; childId: string; offsetX: number; offsetY: number; snapshot: LayoutItem[] };
+
+type ToolDefinition = {
+  type: LayoutItemType;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+};
+
+const toolDefinitions: ToolDefinition[] = [
+  { type: 'additional_door', title: 'Puerta adicional', description: '+120 €', icon: <DoorOpen size={18} /> },
+  { type: 'window_80x80', title: 'Ventana 80x80 extra', description: '+200 €', icon: <Grid2X2 size={18} /> },
+  { type: 'large_window', title: 'Ventana grande', description: '+250 €', icon: <Grid2X2 size={18} /> },
+  { type: 'additional_socket', title: 'Enchufe adicional', description: '+50 €', icon: <PlugZap size={18} /> },
+  { type: 'wall_partition', title: 'Tabique simple', description: '3 paneles + mano de obra · +300 €', icon: <Move size={18} /> },
+  { type: 'interior_room', title: 'Habitación interior', description: 'Incluye puerta, ventana 80x80, luz y enchufe · +700 €', icon: <Home size={18} /> },
+  { type: 'full_bathroom', title: 'Baño completo', description: 'Incluye sanitarios, luz, enchufes y plato opcional · +1.500 €', icon: <Bath size={18} /> },
+  { type: 'air_conditioning', title: 'Aire acondicionado', description: '+600 €', icon: <Snowflake size={18} /> },
+];
+
+const initialConfig = (): ConfiguratorState => ({
   length: 6,
   width: 2.4,
   widthOption: '2.40 m',
@@ -53,7 +84,7 @@ const makeInitialConfig = (): ConfiguratorState => ({
   specialThickness: '',
   specialColor: '',
   isSpecialPanel: false,
-  useType: 'Caseta de obra',
+  useType: 'Caseta para finca',
   province: '',
   city: '',
   postalCode: '',
@@ -71,802 +102,495 @@ const initialContact: ContactFormState = {
   newsletterSubscribed: false,
 };
 
-const cloneLayout = (items: LayoutItem[]) => items.map((item) => ({ ...item }));
-const sameLayout = (a: LayoutItem[], b: LayoutItem[]) => JSON.stringify(a) === JSON.stringify(b);
-const snap = (value: number, step = GRID_SIZE) => Math.round(value / step) * step;
+const useTypes: UseType[] = ['Caseta de obra', 'Oficina', 'Almacén', 'Vestuario', 'Caseta para finca', 'Local comercial', 'Otro'];
+const deliveryTimelines: DeliveryTimeline[] = ['Lo antes posible', 'En menos de 1 mes', 'En 1-3 meses', 'Más adelante', 'Solo estoy mirando precios'];
+const panelChoices: PanelChoice[] = ['Panel sándwich blanco 30 mm', 'Otro grosor de panel', 'Otro color de panel', 'Otro grosor y otro color'];
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-const isArchitecturalDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom', 'wall_partition'].includes(item.itemType);
-const isResizableDivision = (item: LayoutItem) => ['interior_room', 'full_bathroom'].includes(item.itemType);
-const applyDivisionOrientation = (item: LayoutItem, orientation: 'transversal' | 'longitudinal'): LayoutItem => {
-  if (!isArchitecturalDivision(item)) return item;
-  if (item.itemType === 'wall_partition') {
-    return orientation === 'transversal'
-      ? { ...item, layoutOrientation: orientation, x: 0, width: 100, height: 2.2, y: clamp(item.y || 45, 0, 97.8), rotation: 0 }
-      : { ...item, layoutOrientation: orientation, y: 0, height: 100, width: 2.2, x: clamp(item.x || 45, 0, 97.8), rotation: 90 };
-  }
-  const defaultDepth = item.itemType === 'full_bathroom' ? 28 : 30;
-  return orientation === 'transversal'
-    ? { ...item, layoutOrientation: orientation, x: 0, width: 100, height: defaultDepth, y: clamp(item.y || 62, 0, 100 - defaultDepth), rotation: 0 }
-    : { ...item, layoutOrientation: orientation, y: 0, height: 100, width: defaultDepth, x: clamp(item.x || 60, 0, 100 - defaultDepth), rotation: 90 };
+const snap = (value: number, step = 1) => Math.round(value / step) * step;
+const cloneLayout = (items: LayoutItem[]) => items.map((item) => ({ ...item, childItems: item.childItems?.map((child) => ({ ...child })) }));
+const uid = () => crypto.randomUUID();
+const isRoom = (item: LayoutItem) => item.itemType === 'interior_room';
+const isBathroom = (item: LayoutItem) => item.itemType === 'full_bathroom';
+const isGrouped = (item: LayoutItem) => isRoom(item) || isBathroom(item);
+const isEdgeElement = (item: LayoutItem) => item.zone === 'edge';
+const isDoor = (type: LayoutItemType | PlanChildType) => type === 'base_door' || type === 'additional_door' || type === 'door';
+const isWindow = (type: LayoutItemType | PlanChildType) => ['base_window_80x80', 'window_80x80', 'large_window', 'window_40x40'].includes(type);
+const isSocket = (type: LayoutItemType | PlanChildType) => ['base_socket', 'additional_socket', 'socket', 'inside_socket', 'water_heater_socket'].includes(type);
+
+const roomChildren = (): PlanChildElement[] => [
+  { id: uid(), type: 'door', label: 'Puerta habitación', x: 8, y: 86, width: 22, height: 10, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'window_80x80', label: 'Ventana 80x80', x: 42, y: 2, width: 26, height: 9, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'light_point', label: 'Punto de luz', x: 46, y: 43, width: 12, height: 12, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'socket', label: 'Enchufe', x: 78, y: 70, width: 12, height: 12, rotation: 0, included: true, lockedToParent: true },
+];
+
+const bathroomChildren = (): PlanChildElement[] => [
+  { id: uid(), type: 'door', label: 'Puerta baño', x: 8, y: 86, width: 24, height: 10, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'window_40x40', label: 'Ventana 40x40', x: 70, y: 2, width: 22, height: 8, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'light_point', label: 'Punto de luz', x: 45, y: 18, width: 12, height: 12, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'inside_socket', label: 'Enchufe interior', x: 12, y: 36, width: 11, height: 11, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'water_heater_socket', label: 'Enchufe termo', x: 78, y: 36, width: 11, height: 11, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'sink', label: 'Lavabo', x: 16, y: 68, width: 22, height: 14, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'toilet', label: 'Váter', x: 42, y: 66, width: 20, height: 18, rotation: 0, included: true, lockedToParent: true },
+  { id: uid(), type: 'shower_tray', label: 'Plato de ducha', x: 66, y: 60, width: 27, height: 26, rotation: 0, included: true, lockedToParent: true, optional: true },
+];
+
+const makeLayoutItem = (type: LayoutItemType, existing: LayoutItem[]): LayoutItem => {
+  const spec = LAYOUT_ITEM_CATALOG[type];
+  const count = existing.filter((item) => item.itemType === type).length;
+  const base: LayoutItem = {
+    id: uid(),
+    itemType: type,
+    itemLabel: spec.label,
+    x: clamp(12 + count * 5, 2, 80),
+    y: spec.zone === 'edge' ? 0 : clamp(16 + count * 5, 2, 80),
+    width: spec.width,
+    height: spec.height,
+    rotation: 0,
+    price: spec.price,
+    zone: spec.zone,
+    included: false,
+  };
+
+  if (type === 'wall_partition') return { ...base, x: 8, y: 50, width: 84, height: 3, price: 300, layoutOrientation: 'transversal' };
+  if (type === 'interior_room') return { ...base, x: 8, y: 16, width: 38, height: 56, price: 700, layoutOrientation: 'longitudinal', includedFeatures: ['puerta', 'ventana 80x80', 'punto de luz', 'enchufe'], childItems: roomChildren() };
+  if (type === 'full_bathroom') return { ...base, x: 62, y: 20, width: 26, height: 50, price: 1500, layoutOrientation: 'longitudinal', hasShowerTray: true, includedFeatures: ['puerta', 'ventana 40x40', 'punto de luz', 'enchufe interior', 'enchufe exterior termo', 'lavabo', 'váter', 'plato de ducha'], childItems: bathroomChildren() };
+  return base;
 };
 
-const normalizeItemPosition = (item: LayoutItem, proposedX: number, proposedY: number) => {
-  if (isArchitecturalDivision(item)) {
-    if ((item.layoutOrientation || 'transversal') === 'transversal') {
-      return { x: 0, y: clamp(snap(proposedY), 0, 100 - item.height), rotation: 0 as const };
-    }
-    return { x: clamp(snap(proposedX), 0, 100 - item.width), y: 0, rotation: 90 as const };
-  }
+const formatPlanPrice = (item: LayoutItem) => item.included ? 'Incluido' : formatCurrency(getLayoutItemPrice(item));
 
-  if (item.zone === 'edge') {
-    const topDistance = Math.abs(proposedY);
-    const bottomDistance = Math.abs(100 - (proposedY + item.height));
-    const leftDistance = Math.abs(proposedX);
-    const rightDistance = Math.abs(100 - (proposedX + item.width));
-    const min = Math.min(topDistance, bottomDistance, leftDistance, rightDistance);
+const parentItemName = (item: LayoutItem) => {
+  if (item.itemType === 'interior_room') return 'Habitación interior';
+  if (item.itemType === 'full_bathroom') return 'Baño completo';
+  if (item.itemType === 'wall_partition') return 'Tabique simple';
+  return item.itemLabel;
+};
 
-    if (min === topDistance) {
-      return { x: clamp(snap(proposedX), 0, 100 - item.width), y: 0, rotation: 0 as const };
-    }
-    if (min === bottomDistance) {
-      return { x: clamp(snap(proposedX), 0, 100 - item.width), y: 100 - item.height, rotation: 180 as const };
-    }
-    if (min === leftDistance) {
-      return { x: 0, y: clamp(snap(proposedY), 0, 100 - item.height), rotation: 270 as const };
-    }
-    return { x: 100 - item.width, y: clamp(snap(proposedY), 0, 100 - item.height), rotation: 90 as const };
-  }
+const childIcon = (type: PlanChildType) => {
+  if (isDoor(type)) return '🚪';
+  if (type === 'window_80x80') return '🪟80';
+  if (type === 'window_40x40') return '🪟40';
+  if (type === 'light_point') return '💡';
+  if (type === 'inside_socket' || type === 'socket') return '🔌';
+  if (type === 'water_heater_socket') return '⚡';
+  if (type === 'sink') return '🚰';
+  if (type === 'toilet') return '🚽';
+  if (type === 'shower_tray') return '🚿';
+  return '•';
+};
 
+const getPointerPercent = (event: PointerEvent | React.PointerEvent<SVGSVGElement>, svg: SVGSVGElement) => {
+  const rect = svg.getBoundingClientRect();
   return {
-    x: clamp(snap(proposedX), 0, 100 - item.width),
-    y: clamp(snap(proposedY), 0, 100 - item.height),
-    rotation: item.rotation,
+    x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
+    y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
   };
 };
 
-const toolDescriptions: Record<LayoutItemType, string> = {
-  additional_socket: 'Añadir enchufe adicional · +50 €',
-  additional_door: 'Añadir puerta adicional · +120 €',
-  window_80x80: 'Añadir ventana 80x80 · +200 €',
-  large_window: 'Añadir ventana grande · +250 €',
-  wall_partition: 'Añadir tabique interior · sin coste automático',
-  interior_room: 'Añadir habitación interior · +300 €',
-  full_bathroom: 'Añadir baño completo · +1.500 €',
-  air_conditioning: 'Añadir aire acondicionado · +600 €',
-  base_door: 'Puerta incluida',
-  base_window_80x80: 'Ventana incluida',
-  base_socket: 'Enchufe incluido',
-  base_light_point: 'Punto de luz incluido',
-  base_electrical_panel: 'Cuadro eléctrico incluido',
+const getChildAbsoluteBox = (item: LayoutItem, child: PlanChildElement) => ({
+  x: item.x + (child.x / 100) * item.width,
+  y: item.y + (child.y / 100) * item.height,
+  width: (child.width / 100) * item.width,
+  height: (child.height / 100) * item.height,
+});
+
+const getSelected = (items: LayoutItem[], selection: Selection) => {
+  if (!selection) return { item: null as LayoutItem | null, child: null as PlanChildElement | null };
+  const item = items.find((entry) => entry.id === selection.itemId) || null;
+  const child = selection.kind === 'child' ? item?.childItems?.find((entry) => entry.id === selection.childId) || null : null;
+  return { item, child };
 };
 
-export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin: () => void }) => {
-  const [step, setStep] = useState(1);
-  const [config, setConfig] = useState<ConfiguratorState>(makeInitialConfig());
-  const [contact, setContact] = useState<ContactFormState>(initialContact);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [selectedLayoutItemId, setSelectedLayoutItemId] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number; initialLayout: LayoutItem[] } | null>(null);
-  const [resizing, setResizing] = useState<{ id: string; edge: ResizeHandle; initialLayout: LayoutItem[] } | null>(null);
-  const [undoStack, setUndoStack] = useState<LayoutItem[][]>([]);
-  const [redoStack, setRedoStack] = useState<LayoutItem[][]>([]);
-  const [planeZoom, setPlaneZoom] = useState(1);
-  const planeRef = useRef<HTMLDivElement | null>(null);
+const BaseSymbol = ({ item }: { item: LayoutItem }) => {
+  if (isDoor(item.itemType)) return <text x="50%" y="60%" textAnchor="middle" className="fill-orange-100 text-[6px] font-black">PUERTA</text>;
+  if (isWindow(item.itemType)) return <text x="50%" y="60%" textAnchor="middle" className="fill-sky-100 text-[6px] font-black">VENTANA</text>;
+  if (item.itemType === 'base_light_point') return <text x="50%" y="62%" textAnchor="middle" className="fill-yellow-100 text-[8px] font-black">💡</text>;
+  if (isSocket(item.itemType)) return <text x="50%" y="62%" textAnchor="middle" className="fill-slate-100 text-[8px] font-black">🔌</text>;
+  if (item.itemType === 'base_electrical_panel') return <text x="50%" y="62%" textAnchor="middle" className="fill-blue-100 text-[6px] font-black">CE</text>;
+  if (item.itemType === 'air_conditioning') return <text x="50%" y="62%" textAnchor="middle" className="fill-violet-100 text-[6px] font-black">A/A</text>;
+  return null;
+};
 
-  const price = useMemo(() => calculatePrice(config), [config]);
-  const totalSteps = 7;
-  const selectedLayoutItem = config.layoutItems.find((item) => item.id === selectedLayoutItemId) || null;
+const PlanEditor = ({
+  config,
+  setConfig,
+  selection,
+  setSelection,
+  pushHistory,
+}: {
+  config: ConfiguratorState;
+  setConfig: React.Dispatch<React.SetStateAction<ConfiguratorState>>;
+  selection: Selection;
+  setSelection: (selection: Selection) => void;
+  pushHistory: () => void;
+}) => {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const aspect = config.length / config.width;
+  const { item: selectedItem, child: selectedChild } = getSelected(config.layoutItems, selection);
 
-  const pushUndoSnapshot = (snapshot: LayoutItem[]) => {
-    setUndoStack((prev) => [...prev.slice(-24), cloneLayout(snapshot)]);
-    setRedoStack([]);
+  const startItemDrag = (event: React.PointerEvent, item: LayoutItem) => {
+    if (item.included || !svgRef.current) return;
+    event.stopPropagation();
+    const point = getPointerPercent(event as React.PointerEvent<SVGSVGElement>, svgRef.current);
+    pushHistory();
+    setSelection({ kind: 'item', itemId: item.id });
+    setDrag({ kind: 'item', itemId: item.id, offsetX: point.x - item.x, offsetY: point.y - item.y, snapshot: cloneLayout(config.layoutItems) });
   };
 
-  const setConfigValue = <K extends keyof ConfiguratorState>(key: K, value: ConfiguratorState[K]) => {
-    setConfig((prev) => ({ ...prev, [key]: value }));
+  const startChildDrag = (event: React.PointerEvent, item: LayoutItem, child: PlanChildElement) => {
+    if (!svgRef.current) return;
+    event.stopPropagation();
+    const point = getPointerPercent(event as React.PointerEvent<SVGSVGElement>, svgRef.current);
+    const box = getChildAbsoluteBox(item, child);
+    pushHistory();
+    setSelection({ kind: 'child', itemId: item.id, childId: child.id });
+    setDrag({ kind: 'child', itemId: item.id, childId: child.id, offsetX: point.x - box.x, offsetY: point.y - box.y, snapshot: cloneLayout(config.layoutItems) });
   };
 
-  const setContactValue = <K extends keyof ContactFormState>(key: K, value: ContactFormState[K]) => {
-    setContact((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const replaceLayoutItems = (nextItems: LayoutItem[], options?: { recordHistory?: boolean; snapshot?: LayoutItem[] }) => {
-    if (options?.recordHistory) {
-      pushUndoSnapshot(options.snapshot ?? config.layoutItems);
-    }
-    setConfig((prev) => ({ ...prev, layoutItems: nextItems }));
-  };
-
-  const updateMeasureFlags = (length: number, width: number, widthOption: ConfiguratorState['widthOption']) => {
-    const isSpecialMeasure = length === 8 || widthOption === 'Otro ancho' || width < 2 || width > 3;
-    setConfig((prev) => ({ ...prev, length, width, widthOption, isSpecialMeasure }));
-  };
-
-  const selectBestSeller = () => {
-    setConfig((prev) => ({ ...prev, length: 6, width: 2.4, widthOption: '2.40 m', customWidth: '', isSpecialMeasure: false }));
-  };
-
-  const applyPanelChoice = (choice: PanelChoice, overrides?: { thickness?: string; color?: string }) => {
-    let panelType = 'Panel sándwich';
-    let panelThickness = '30 mm';
-    let panelColor = 'Blanco';
-    let isSpecialPanel = false;
-
-    if (choice === 'Otro grosor de panel') {
-      panelType = 'Panel sándwich especial';
-      panelThickness = overrides?.thickness || config.specialThickness || '';
-      panelColor = 'Blanco';
-      isSpecialPanel = true;
-    } else if (choice === 'Otro color de panel') {
-      panelType = 'Panel sándwich especial';
-      panelThickness = '30 mm';
-      panelColor = overrides?.color || config.specialColor || '';
-      isSpecialPanel = true;
-    } else if (choice === 'Otro grosor y otro color') {
-      panelType = 'Panel sándwich especial';
-      panelThickness = overrides?.thickness || config.specialThickness || '';
-      panelColor = overrides?.color || config.specialColor || '';
-      isSpecialPanel = true;
-    }
+  const handleMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!drag || !svgRef.current) return;
+    const point = getPointerPercent(event, svgRef.current);
 
     setConfig((prev) => ({
       ...prev,
-      panelChoice: choice,
-      panelType,
-      panelThickness,
-      panelColor,
-      isSpecialPanel,
+      layoutItems: prev.layoutItems.map((item) => {
+        if (drag.kind === 'item' && item.id === drag.itemId) {
+          if (isEdgeElement(item)) {
+            return { ...item, x: clamp(snap(point.x - drag.offsetX), 0, 100 - item.width), y: 0 };
+          }
+          return { ...item, x: clamp(snap(point.x - drag.offsetX), 0, 100 - item.width), y: clamp(snap(point.y - drag.offsetY), 0, 100 - item.height) };
+        }
+
+        if (drag.kind === 'child' && item.id === drag.itemId) {
+          return {
+            ...item,
+            childItems: item.childItems?.map((child) => {
+              if (child.id !== drag.childId) return child;
+              const nextAbsX = point.x - drag.offsetX;
+              const nextAbsY = point.y - drag.offsetY;
+              return {
+                ...child,
+                x: clamp(snap(((nextAbsX - item.x) / item.width) * 100), 0, 100 - child.width),
+                y: clamp(snap(((nextAbsY - item.y) / item.height) * 100), 0, 100 - child.height),
+              };
+            }),
+          };
+        }
+        return item;
+      }),
     }));
   };
 
-  const addLayoutItem = (itemType: LayoutItemType) => {
-    const snapshot = cloneLayout(config.layoutItems);
-    const spec = LAYOUT_ITEM_CATALOG[itemType];
-    const amount = config.layoutItems.filter((item) => item.itemType === itemType).length;
-    const isDivision = ['interior_room', 'full_bathroom', 'wall_partition'].includes(itemType);
-    const rawX = spec.zone === 'edge' ? 12 + amount * 10 : isDivision ? 0 : 16 + amount * 6;
-    const rawY = spec.zone === 'edge' ? 0 : isDivision ? 55 + amount * 6 : 18 + amount * 6;
-
-    const draft: LayoutItem = {
-      id: crypto.randomUUID(),
-      itemType,
-      itemLabel: spec.label,
-      x: rawX,
-      y: rawY,
-      width: spec.width,
-      height: spec.height,
-      rotation: 0,
-      price: spec.price,
-      zone: spec.zone,
-      included: false,
-      layoutOrientation: isDivision ? 'transversal' : undefined,
-    };
-
-    const oriented = isDivision ? applyDivisionOrientation(draft, 'transversal') : draft;
-    const normalized = normalizeItemPosition(oriented, rawX, rawY);
-    const next: LayoutItem = { ...oriented, ...normalized };
-    replaceLayoutItems([...config.layoutItems, next], { recordHistory: true, snapshot });
-    setSelectedLayoutItemId(next.id);
-  };
-
-  const changeLayoutItemOrientation = (id: string, orientation: 'transversal' | 'longitudinal') => {
-    const snapshot = cloneLayout(config.layoutItems);
-    replaceLayoutItems(config.layoutItems.map((item) => item.id === id ? applyDivisionOrientation(item, orientation) : item), { recordHistory: true, snapshot });
-  };
-
-  const removeLayoutItem = (id: string) => {
-    const item = config.layoutItems.find((entry) => entry.id === id);
-    if (!item || item.included) return;
-    const snapshot = cloneLayout(config.layoutItems);
-    replaceLayoutItems(config.layoutItems.filter((entry) => entry.id !== id), { recordHistory: true, snapshot });
-    setSelectedLayoutItemId(null);
-  };
-
-  const rotateLayoutItem = (id: string) => {
-    const snapshot = cloneLayout(config.layoutItems);
-    replaceLayoutItems(
-      config.layoutItems.map((item) => {
-        if (item.id !== id) return item;
-        const nextRotation = (((item.rotation || 0) + 90) % 360) as 0 | 90 | 180 | 270;
-        return { ...item, rotation: nextRotation };
-      }),
-      { recordHistory: true, snapshot },
-    );
-  };
-
-  const duplicateLayoutItem = (id: string) => {
-    const item = config.layoutItems.find((entry) => entry.id === id);
-    if (!item || item.included) return;
-    const snapshot = cloneLayout(config.layoutItems);
-    const copyDraft = { ...item, id: crypto.randomUUID(), included: false };
-    const normalized = normalizeItemPosition(copyDraft, item.x + 6, item.y + 6);
-    const copy = { ...copyDraft, ...normalized };
-    replaceLayoutItems([...config.layoutItems, copy], { recordHistory: true, snapshot });
-    setSelectedLayoutItemId(copy.id);
-  };
-
-  const undoLayoutChange = () => {
-    if (!undoStack.length) return;
-    const previous = undoStack[undoStack.length - 1];
-    setUndoStack((prev) => prev.slice(0, -1));
-    setRedoStack((prev) => [...prev, cloneLayout(config.layoutItems)]);
-    setConfig((prev) => ({ ...prev, layoutItems: cloneLayout(previous) }));
-    setSelectedLayoutItemId(null);
-  };
-
-  const redoLayoutChange = () => {
-    if (!redoStack.length) return;
-    const next = redoStack[redoStack.length - 1];
-    setRedoStack((prev) => prev.slice(0, -1));
-    setUndoStack((prev) => [...prev, cloneLayout(config.layoutItems)]);
-    setConfig((prev) => ({ ...prev, layoutItems: cloneLayout(next) }));
-    setSelectedLayoutItemId(null);
-  };
-
-  const centerView = () => setPlaneZoom(1);
-
-  const handleItemPointerDown = (event: React.PointerEvent<HTMLDivElement>, id: string) => {
-    const plane = planeRef.current;
-    if (!plane) return;
-    const rect = plane.getBoundingClientRect();
-    const item = config.layoutItems.find((entry) => entry.id === id);
-    if (!item) return;
-    setDragging({
-      id,
-      offsetX: event.clientX - rect.left - (item.x / 100) * rect.width,
-      offsetY: event.clientY - rect.top - (item.y / 100) * rect.height,
-      initialLayout: cloneLayout(config.layoutItems),
-    });
-  };
-
-  const handleItemResizePointerDown = (event: React.PointerEvent<HTMLElement>, id: string, edge: ResizeHandle) => {
-    const item = config.layoutItems.find((entry) => entry.id === id);
-    if (!item || !isResizableDivision(item)) return;
-    event.stopPropagation();
-    setDragging(null);
-    setSelectedLayoutItemId(id);
-    setResizing({
-      id,
-      edge,
-      initialLayout: cloneLayout(config.layoutItems),
-    });
-  };
-
-  useEffect(() => {
-    if (!resizing) return;
-
-    const move = (event: PointerEvent) => {
-      const plane = planeRef.current;
-      if (!plane) return;
-      const rect = plane.getBoundingClientRect();
-      const pointerX = ((event.clientX - rect.left) / rect.width) * 100;
-      const pointerY = ((event.clientY - rect.top) / rect.height) * 100;
-
-      setConfig((prev) => ({
-        ...prev,
-        layoutItems: prev.layoutItems.map((item) => {
-          if (item.id !== resizing.id || !isResizableDivision(item)) return item;
-          const orientation = item.layoutOrientation || 'transversal';
-
-          if (orientation === 'transversal') {
-            const nextHeight = clamp(snap(pointerY - item.y), MIN_ROOM_DEPTH_PERCENT, 100 - item.y);
-            return { ...item, height: nextHeight };
-          }
-
-          const nextWidth = clamp(snap(pointerX - item.x), MIN_ROOM_DEPTH_PERCENT, 100 - item.x);
-          return { ...item, width: nextWidth };
-        }),
-      }));
-    };
-
-    const up = () => {
-      setResizing((current) => {
-        if (current && !sameLayout(current.initialLayout, config.layoutItems)) {
-          pushUndoSnapshot(current.initialLayout);
-        }
-        return null;
-      });
-    };
-
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-  }, [resizing, config.layoutItems]);
-
-  useEffect(() => {
-    if (!dragging) return;
-
-    const move = (event: PointerEvent) => {
-      const plane = planeRef.current;
-      if (!plane) return;
-      const rect = plane.getBoundingClientRect();
-      setConfig((prev) => ({
-        ...prev,
-        layoutItems: prev.layoutItems.map((item) => {
-          if (item.id !== dragging.id) return item;
-          const proposedX = ((event.clientX - rect.left - dragging.offsetX) / rect.width) * 100;
-          const proposedY = ((event.clientY - rect.top - dragging.offsetY) / rect.height) * 100;
-          const normalized = normalizeItemPosition(item, proposedX, proposedY);
-          return { ...item, ...normalized };
-        }),
-      }));
-    };
-
-    const up = () => {
-      setDragging((current) => {
-        if (current && !sameLayout(current.initialLayout, config.layoutItems)) {
-          pushUndoSnapshot(current.initialLayout);
-        }
-        return null;
-      });
-    };
-
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-  }, [dragging, config.layoutItems]);
-
-  const validateStep = () => {
-    const nextErrors: Record<string, string> = {};
-
-    if (step === 1) {
-      if (!config.length || config.length < 3) nextErrors.length = 'El largo mínimo es 3 metros.';
-      if (config.widthOption === 'Otro ancho') {
-        const customWidth = Number(config.customWidth);
-        if (!config.customWidth || Number.isNaN(customWidth)) nextErrors.width = 'Introduce un ancho válido.';
-        if (!Number.isNaN(customWidth) && (customWidth < 2 || customWidth > 3)) nextErrors.width = 'El ancho debe estar entre 2 m y 3 m.';
-      }
-      if (config.length > 8) nextErrors.length = 'Para más de 8 m debes consultar directamente por WhatsApp.';
-    }
-
-    if (step === 2) {
-      if ((config.panelChoice === 'Otro grosor de panel' || config.panelChoice === 'Otro grosor y otro color') && !config.specialThickness.trim()) {
-        nextErrors.specialThickness = 'Indica el grosor deseado.';
-      }
-      if ((config.panelChoice === 'Otro color de panel' || config.panelChoice === 'Otro grosor y otro color') && !config.specialColor.trim()) {
-        nextErrors.specialColor = 'Indica el color deseado.';
-      }
-    }
-
-    if (step === 5 || step === 7) {
-      if (!config.province.trim()) nextErrors.province = 'La provincia es obligatoria.';
-      if (!config.city.trim()) nextErrors.city = 'La localidad es obligatoria.';
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  };
-
-  const next = () => {
-    if (!validateStep()) return;
-    setStep((prev) => Math.min(prev + 1, totalSteps));
-  };
-
-  const previous = () => setStep((prev) => Math.max(prev - 1, 1));
-
-  const openDownloadModal = () => {
-    if (!validateStep()) return;
-    setErrors({});
-    setShowDownloadModal(true);
-  };
-
-  const validateDownloadForm = () => {
-    const nextErrors: Record<string, string> = {};
-    if (!contact.fullName.trim()) nextErrors.fullName = 'El nombre completo es obligatorio.';
-    if (!contact.email.trim()) nextErrors.email = 'El email es obligatorio.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) nextErrors.email = 'Introduce un email válido.';
-    if (!contact.phone.trim()) nextErrors.phone = 'El teléfono es obligatorio.';
-    if (!config.province.trim()) nextErrors.province = 'La provincia es obligatoria.';
-    if (!config.city.trim()) nextErrors.city = 'La localidad es obligatoria.';
-    if (!contact.accepted) nextErrors.accepted = 'Debes aceptar la política de privacidad.';
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  };
-
-  const submit = async () => {
-    if (!validateDownloadForm()) return;
-    setIsSubmitting(true);
-    try {
-      await createLead({ contact, config, price });
-      downloadConfiguratorPdf(contact, config, price);
-      setShowDownloadModal(false);
-      setSuccess(true);
-    } catch (error) {
-      setErrors({ submit: error instanceof Error ? error.message : 'No se pudo guardar la solicitud o generar el PDF.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const whatsappUrl = buildWhatsAppUrl(contact, config, price);
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-slate-50 px-4 py-10">
-        <div className="mx-auto max-w-4xl">
-          <Card className="text-center">
-            <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-brand-green" />
-            <h1 className="text-3xl font-black text-slate-900">Tu plano y presupuesto se han generado correctamente</h1>
-            <p className="mt-3 text-slate-600">También puedes enviarnos tu configuración por WhatsApp para recibir atención personalizada.</p>
-            <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-2xl bg-slate-50 p-5 text-left">
-                <h2 className="mb-3 font-bold text-slate-900">Resumen de tu módulo</h2>
-                <p><strong>Medidas:</strong> {config.length} x {config.width} m ({price.squareMeters} m²)</p>
-                <p><strong>Panel:</strong> {config.panelType}, {config.panelThickness}, color {config.panelColor}</p>
-                <p><strong>Configuración base:</strong> {price.summary.includedList.join(', ')}</p>
-                <p><strong>Extras:</strong> {price.summary.extrasList.length ? price.summary.extrasList.join(', ') : 'Sin extras añadidos'}</p>
-                <p><strong>Precio estimado sin IVA:</strong> {formatCurrency(price.estimatedPriceWithoutVat)}</p>
-                <p><strong>Total estimado con IVA:</strong> {formatCurrency(price.estimatedPriceWithVat)}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-5 text-left">
-                <LayoutPreview length={config.length} width={config.width} items={config.layoutItems} />
-              </div>
-            </div>
-            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-              <a href={whatsappUrl} target="_blank" rel="noreferrer"><Button className="flex w-full items-center justify-center gap-2 sm:w-auto"><MessageCircle size={18} /> Abrir WhatsApp</Button></a>
-              <Button variant="outline" onClick={onBack}>Volver al inicio</Button>
-              <Button variant="ghost" onClick={onAdmin}>Ir al panel</Button>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  const handlePointerUp = () => setDrag(null);
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between">
-          <Button variant="ghost" onClick={onBack} className="flex items-center gap-2"><ArrowLeft size={18} /> Inicio</Button>
-          <Button variant="outline" onClick={onAdmin}>Panel privado</Button>
+    <div className="rounded-[28px] border border-slate-800 bg-slate-950 p-4 shadow-2xl shadow-slate-900/25">
+      <div className="mb-4 flex flex-col gap-2 text-white md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Editor 2D profesional</p>
+          <h2 className="text-2xl font-black">Plano interactivo con grupos editables</h2>
+          <p className="text-sm text-slate-300">Mueve el bloque completo o selecciona sus elementos internos para colocarlos donde quiera el cliente.</p>
         </div>
-
-        <div className="mb-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-brand-orange">Configurador visual 2D</p>
-              <h1 className="mt-2 text-3xl font-black text-slate-900 md:text-4xl">Diseña tu módulo prefabricado</h1>
-              <p className="mt-3 max-w-3xl text-slate-600">Configura medidas, distribución y elementos principales en un plano 2D sencillo. Recibe tu presupuesto personalizado.</p>
-            </div>
-            <button onClick={selectBestSeller} className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:border-amber-300">
-              <p className="flex items-center gap-2 text-sm font-bold text-amber-800"><Sparkles size={16} /> Modelo recomendado</p>
-              <p className="mt-1 text-lg font-black text-slate-900">6 x 2,40 m · 4.750 € sin IVA</p>
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <div className="mb-2 flex justify-between text-sm font-semibold text-slate-600">
-            <span>Paso {step} de {totalSteps}</span>
-            <span>{Math.round((step / totalSteps) * 100)}%</span>
-          </div>
-          <div className="h-3 rounded-full bg-slate-200">
-            <div className="h-3 rounded-full bg-brand-orange transition-all" style={{ width: `${(step / totalSteps) * 100}%` }} />
-          </div>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          <Card>
-            {step === 1 && (
-              <Step title="Elige las medidas de tu módulo">
-                <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  <p className="font-bold">Modelo más solicitado: 6 x 2,40 m</p>
-                  <p className="mt-1">Ideal para fincas, oficinas pequeñas, almacenes y casetas de obra.</p>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {lengthOptions.map((length) => (
-                    <button key={length} onClick={() => updateMeasureFlags(length, config.width, config.widthOption)} className={`rounded-2xl border p-4 text-left transition ${config.length === length ? 'border-brand-orange bg-orange-50 text-brand-orange' : 'border-slate-200 hover:border-slate-300'}`}>
-                      <p className="text-lg font-black">{length} m</p>
-                      <p className="text-xs font-semibold text-slate-500">{length === 6 ? 'Más vendido' : length === 8 ? 'Bajo consulta' : 'Medida habitual'}</p>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  {widthOptions.map((option) => {
-                    const isSelected = option.value === null ? config.widthOption === 'Otro ancho' : config.width === option.value;
-                    return (
-                      <button
-                        key={option.label}
-                        onClick={() => {
-                          if (option.value === null) updateMeasureFlags(config.length, Number(config.customWidth) || config.width, 'Otro ancho');
-                          else updateMeasureFlags(config.length, option.value, option.value === 2.4 ? '2.40 m' : '2.50 m');
-                        }}
-                        className={`rounded-2xl border p-4 text-left transition ${isSelected ? 'border-brand-blue bg-blue-50 text-brand-blue' : 'border-slate-200 hover:border-slate-300'}`}
-                      >
-                        <p className="font-bold">{option.label}</p>
-                        <p className="mt-1 text-xs text-slate-500">{option.helper}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {config.widthOption === 'Otro ancho' && (
-                  <div className="mt-5 max-w-xs">
-                    <Field label="Ancho deseado en metros" error={errors.width}>
-                      <Input value={config.customWidth} onChange={(e) => {
-                        const value = e.target.value;
-                        const numeric = Number(value);
-                        setConfig((prev) => ({ ...prev, customWidth: value, width: Number.isNaN(numeric) ? prev.width : numeric, isSpecialMeasure: true }));
-                      }} placeholder="Ej. 2.60" />
-                    </Field>
-                  </div>
-                )}
-                {errors.length && <p className="mt-3 text-sm text-red-600">{errors.length}</p>}
-                {config.isSpecialMeasure && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Esta medida requiere revisión personalizada. Te contactaremos para confirmar viabilidad, transporte y precio final.</p>}
-              </Step>
-            )}
-
-            {step === 2 && (
-              <Step title="Selecciona el panel sándwich">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {panelChoices.map((choice) => (
-                    <button key={choice} onClick={() => applyPanelChoice(choice)} className={`rounded-2xl border p-4 text-left transition ${config.panelChoice === choice ? 'border-brand-blue bg-blue-50 text-brand-blue' : 'border-slate-200 hover:border-slate-300'}`}>
-                      <p className="font-bold">{choice}</p>
-                      <p className="mt-1 text-xs text-slate-500">{choice === 'Panel sándwich blanco 30 mm' ? 'Opción estándar' : 'Bajo consulta'}</p>
-                    </button>
-                  ))}
-                </div>
-                {(config.panelChoice === 'Otro grosor de panel' || config.panelChoice === 'Otro grosor y otro color') && (
-                  <div className="mt-5 max-w-sm"><Field label="Grosor deseado" error={errors.specialThickness}><Input value={config.specialThickness} onChange={(e) => { setConfigValue('specialThickness', e.target.value); applyPanelChoice(config.panelChoice, { thickness: e.target.value }); }} placeholder="Ej. 40 mm" /></Field></div>
-                )}
-                {(config.panelChoice === 'Otro color de panel' || config.panelChoice === 'Otro grosor y otro color') && (
-                  <div className="mt-5 max-w-sm"><Field label="Color deseado" error={errors.specialColor}><Input value={config.specialColor} onChange={(e) => { setConfigValue('specialColor', e.target.value); applyPanelChoice(config.panelChoice, { color: e.target.value }); }} placeholder="Ej. Gris antracita" /></Field></div>
-                )}
-                {config.isSpecialPanel && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Trabajamos normalmente con panel sándwich blanco de 30 mm. Otros grosores o colores requieren consulta personalizada para confirmar disponibilidad, precio y plazo.</p>}
-              </Step>
-            )}
-
-            {step === 3 && (
-              <Step title="¿Qué uso tendrá el módulo?">
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {uses.map((use) => (
-                    <button key={use} onClick={() => setConfigValue('useType', use)} className={`rounded-2xl border p-4 text-left font-bold transition ${config.useType === use ? 'border-brand-blue bg-blue-50 text-brand-blue' : 'border-slate-200 hover:border-slate-300'}`}>{use}</button>
-                  ))}
-                </div>
-              </Step>
-            )}
-
-            {step === 4 && (
-              <Step title="Diseña la distribución de tu módulo">
-                <div className="mb-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-                  <p className="font-bold text-slate-900">Plano 2D de tu módulo</p>
-                  <p className="mt-1">Puedes seleccionar, mover, rotar, duplicar y eliminar elementos. Las habitaciones, baños y tabiques pueden ponerse a lo ancho o a lo largo del módulo, creando divisiones reales de pared a pared.</p>
-                </div>
-                <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
-                  <div className="space-y-5">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="mb-3 text-sm font-bold text-slate-900">Herramientas</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => setSelectedLayoutItemId(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue">Seleccionar</button>
-                        <button onClick={centerView} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue">Centrar</button>
-                        <button onClick={() => setPlaneZoom((prev) => Math.max(0.8, Number((prev - 0.1).toFixed(2))))} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue"><ZoomOut size={16} /> Zoom -</button>
-                        <button onClick={() => setPlaneZoom((prev) => Math.min(1.5, Number((prev + 0.1).toFixed(2))))} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue"><ZoomIn size={16} /> Zoom +</button>
-                        <button disabled={!undoStack.length} onClick={undoLayoutChange} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue disabled:cursor-not-allowed disabled:opacity-40"><Undo2 size={16} /> Deshacer</button>
-                        <button disabled={!redoStack.length} onClick={redoLayoutChange} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-blue hover:text-brand-blue disabled:cursor-not-allowed disabled:opacity-40"><Redo2 size={16} /> Rehacer</button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="mb-3 text-sm font-bold text-slate-900">Añadir elementos</p>
-                      <div className="grid gap-3">
-                        {catalogOrder.map((type) => {
-                          const spec = LAYOUT_ITEM_CATALOG[type];
-                          return (
-                            <button key={type} onClick={() => addLayoutItem(type)} className="rounded-2xl border border-slate-200 p-4 text-left transition hover:border-brand-orange hover:bg-orange-50">
-                              <p className="font-bold text-slate-900">{spec.label}</p>
-                              <p className="text-sm text-slate-500">{toolDescriptions[type]}</p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <LayoutPreview
-                      length={config.length}
-                      width={config.width}
-                      items={config.layoutItems}
-                      editable
-                      planeRef={planeRef}
-                      zoom={planeZoom}
-                      selectedItemId={selectedLayoutItemId}
-                      onSelectItem={(id) => setSelectedLayoutItemId(id || null)}
-                      onItemPointerDown={handleItemPointerDown}
-                      onItemResizePointerDown={handleItemResizePointerDown}
-                    />
-
-                    {selectedLayoutItem ? (
-                      <div className="mt-4 rounded-2xl border border-brand-orange bg-orange-50 p-4">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
-                            <p className="text-sm font-black text-slate-900">Elemento seleccionado</p>
-                            <p className="mt-1 text-sm text-slate-700">{selectedLayoutItem.itemLabel} · {selectedLayoutItem.layoutOrientation ? `orientación ${selectedLayoutItem.layoutOrientation}` : `rotación ${selectedLayoutItem.rotation || 0}°`} · {selectedLayoutItem.included ? 'Incluido en la configuración base' : selectedLayoutItem.price ? `Extra ${formatCurrency(selectedLayoutItem.price)}` : 'Sin coste automático'}</p>
-                            {['interior_room', 'full_bathroom', 'wall_partition'].includes(selectedLayoutItem.itemType) && (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <Button type="button" onClick={() => changeLayoutItemOrientation(selectedLayoutItem.id, 'transversal')} variant={selectedLayoutItem.layoutOrientation === 'transversal' ? 'primary' : 'outline'}>A lo ancho</Button>
-                                <Button type="button" onClick={() => changeLayoutItemOrientation(selectedLayoutItem.id, 'longitudinal')} variant={selectedLayoutItem.layoutOrientation === 'longitudinal' ? 'primary' : 'outline'}>A lo largo</Button>
-                              </div>
-                            )}
-                            {['interior_room', 'full_bathroom'].includes(selectedLayoutItem.itemType) && (
-                              <p className="mt-3 rounded-xl bg-white/80 p-3 text-xs font-semibold text-slate-700">
-                                Arrastra el tirador naranja de la pared interior para ajustar la anchura del recinto.
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" onClick={() => rotateLayoutItem(selectedLayoutItem.id)} variant="outline" className="flex items-center gap-2"><RotateCw size={16} /> Rotar</Button>
-                            {!selectedLayoutItem.included && <Button type="button" onClick={() => duplicateLayoutItem(selectedLayoutItem.id)} variant="outline" className="flex items-center gap-2"><Copy size={16} /> Duplicar</Button>}
-                            {!selectedLayoutItem.included && <Button type="button" onClick={() => removeLayoutItem(selectedLayoutItem.id)} variant="danger" className="flex items-center gap-2"><Trash2 size={16} /> Eliminar</Button>}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm text-blue-800">
-                        Haz clic en cualquier elemento del plano para moverlo, rotarlo o editarlo.
-                      </div>
-                    )}
-
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      <InfoPill label="Largo" value={`${config.length} m`} />
-                      <InfoPill label="Ancho" value={`${config.width} m`} />
-                      <InfoPill label="Superficie" value={`${price.squareMeters} m²`} />
-                    </div>
-                  </div>
-                </div>
-              </Step>
-            )}
-
-            {step === 5 && (
-              <Step title="Ubicación y plazo">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(e) => setConfigValue('province', e.target.value)} placeholder="Ej. Sevilla" /></Field>
-                  <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(e) => setConfigValue('city', e.target.value)} placeholder="Ej. San José de la Rinconada" /></Field>
-                  <Field label="Código postal"><Input value={config.postalCode} onChange={(e) => setConfigValue('postalCode', e.target.value)} placeholder="Ej. 41300" /></Field>
-                </div>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {timelines.map((timeline) => (
-                    <button key={timeline} onClick={() => setConfigValue('deliveryTimeline', timeline)} className={`rounded-2xl border p-4 text-left font-bold transition ${config.deliveryTimeline === timeline ? 'border-brand-blue bg-blue-50 text-brand-blue' : 'border-slate-200 hover:border-slate-300'}`}>{timeline}</button>
-                  ))}
-                </div>
-              </Step>
-            )}
-
-            {step === 6 && (
-              <Step title="Resumen del presupuesto orientativo">
-                <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
-                  <div className="rounded-2xl bg-slate-50 p-5">
-                    <h3 className="mb-4 text-lg font-black text-slate-900">Configuración seleccionada</h3>
-                    <div className="space-y-2 text-sm text-slate-700">
-                      <p><strong>Medidas:</strong> {config.length} x {config.width} m ({price.squareMeters} m²)</p>
-                      <p><strong>Panel:</strong> {config.panelType}, {config.panelThickness}, color {config.panelColor}</p>
-                      <p><strong>Uso:</strong> {config.useType}</p>
-                      <p><strong>Ubicación:</strong> {config.city || '-'}, {config.province || '-'}</p>
-                      <p><strong>Plazo:</strong> {config.deliveryTimeline}</p>
-                      <p><strong>Incluido:</strong> {price.summary.includedList.join(', ')}</p>
-                      <p><strong>Extras:</strong> {price.summary.extrasList.length ? price.summary.extrasList.join(', ') : 'Sin extras añadidos'}</p>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
-                    <p className="text-sm font-bold text-orange-700">Precio estimado sin IVA</p>
-                    <p className="mt-2 text-4xl font-black text-brand-orange">{formatCurrency(price.estimatedPriceWithoutVat)}</p>
-                    <p className="mt-2 text-sm text-orange-700">IVA no incluido. El precio final puede variar según transporte, instalación, accesos, personalización y disponibilidad.</p>
-                    <div className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-700">
-                      <p><strong>IVA 21%:</strong> {formatCurrency(price.vatAmount)}</p>
-                      <p><strong>Total con IVA:</strong> {formatCurrency(price.estimatedPriceWithVat)}</p>
-                    </div>
-                  </div>
-                </div>
-              </Step>
-            )}
-
-            {step === 7 && (
-              <Step title="Descarga tu plano y presupuesto">
-                <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-                  <div className="rounded-2xl bg-slate-50 p-5">
-                    <h3 className="text-xl font-black text-slate-900">Recibe tu plano + presupuesto orientativo</h3>
-                    <p className="mt-2 text-sm text-slate-600">Para descargarlo debes dejar tus datos y aceptar la política de privacidad. La suscripción a la newsletter es opcional.</p>
-                    <Button onClick={openDownloadModal} className="mt-5 flex items-center gap-2"><Download size={18} /> Descargar plano + presupuesto</Button>
-                    {errors.submit && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errors.submit}</p>}
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 p-5">
-                    <LayoutPreview length={config.length} width={config.width} items={config.layoutItems} />
-                  </div>
-                </div>
-              </Step>
-            )}
-
-            <div className="mt-8 flex justify-between gap-3">
-              <Button variant="outline" onClick={previous} disabled={step === 1} className="flex items-center gap-2"><ArrowLeft size={18} /> Anterior</Button>
-              {step < totalSteps ? <Button onClick={next} className="flex items-center gap-2">Siguiente <ArrowRight size={18} /></Button> : <Button onClick={openDownloadModal} className="flex items-center gap-2"><Download size={18} /> Descargar plano + presupuesto</Button>}
-            </div>
-          </Card>
-
-          <Card className="h-fit lg:sticky lg:top-6">
-            <h2 className="mb-4 text-xl font-black text-slate-900">Resumen en tiempo real</h2>
-            <div className="space-y-2 text-sm text-slate-700">
-              <p><strong>Medida:</strong> {config.length} x {config.width} m</p>
-              <p><strong>Superficie:</strong> {price.squareMeters} m²</p>
-              <p><strong>Panel:</strong> {config.panelType} {config.panelColor} {config.panelThickness}</p>
-              <p><strong>Configuración base:</strong> {price.summary.includedList.join(', ')}</p>
-              <p><strong>Enchufes extra:</strong> {price.summary.additionalSockets}</p>
-              <p><strong>Puertas extra:</strong> {price.summary.additionalDoors}</p>
-              <p><strong>Ventanas 80x80 extra:</strong> {price.summary.windows80x80}</p>
-              <p><strong>Ventanas grandes:</strong> {price.summary.largeWindows}</p>
-              <p><strong>Habitaciones:</strong> {price.summary.interiorRooms}</p>
-              <p><strong>Baño completo:</strong> {price.summary.hasFullBathroom ? 'Sí' : 'No'}</p>
-              <p><strong>Aire acondicionado:</strong> {price.summary.hasAirConditioning ? 'Sí' : 'No'}</p>
-            </div>
-            <div className="mt-5 rounded-2xl bg-orange-50 p-4">
-              <p className="text-sm font-bold text-orange-700">Estimación sin IVA</p>
-              <p className="text-3xl font-black text-brand-orange">{formatCurrency(price.estimatedPriceWithoutVat)}</p>
-              <p className="mt-2 text-xs text-orange-700">IVA no incluido</p>
-            </div>
-            <div className="mt-5 flex gap-2 text-xs text-slate-500"><Focus size={16} /> Precio orientativo sujeto a revisión técnica.</div>
-          </Card>
-        </div>
+        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-slate-100 ring-1 ring-white/15">{config.length} x {config.width} m</span>
       </div>
 
-      {showDownloadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-auto rounded-[28px] bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-black uppercase tracking-[0.18em] text-brand-orange">Descarga personalizada</p>
-                <h2 className="mt-2 text-2xl font-black text-slate-900">Recibe tu plano y presupuesto orientativo</h2>
-                <p className="mt-2 text-sm text-slate-600">Guardaremos tu solicitud para poder contactarte y preparar una propuesta final.</p>
-              </div>
-              <button onClick={() => setShowDownloadModal(false)} className="rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200"><X size={18} /></button>
-            </div>
+      <div className="overflow-auto rounded-3xl border border-slate-700 bg-slate-900 p-4">
+        <svg
+          ref={svgRef}
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="min-h-[320px] min-w-[780px] rounded-2xl border-[6px] border-slate-100 bg-slate-950 shadow-inner"
+          style={{ aspectRatio: `${aspect}` }}
+          onPointerMove={handleMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          onPointerDown={() => setSelection(null)}
+        >
+          <defs>
+            <pattern id="planGrid" width="4" height="4" patternUnits="userSpaceOnUse">
+              <path d="M 4 0 L 0 0 0 4" fill="none" stroke="#1d4ed8" strokeWidth="0.12" opacity="0.7" />
+            </pattern>
+            <filter id="selectedGlow">
+              <feDropShadow dx="0" dy="0" stdDeviation="0.8" floodColor="#fb923c" floodOpacity="0.95" />
+            </filter>
+          </defs>
+          <rect x="0" y="0" width="100" height="100" fill="#020617" />
+          <rect x="0" y="0" width="100" height="100" fill="url(#planGrid)" />
+          <rect x="1" y="1" width="98" height="98" fill="none" stroke="#94a3b8" strokeWidth="0.35" />
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field label="Nombre completo" error={errors.fullName}><Input value={contact.fullName} onChange={(e) => setContactValue('fullName', e.target.value)} placeholder="Tu nombre" /></Field>
-              <Field label="Teléfono" error={errors.phone}><Input value={contact.phone} onChange={(e) => setContactValue('phone', e.target.value)} placeholder="600 000 000" /></Field>
-              <Field label="Email" error={errors.email}><Input value={contact.email} onChange={(e) => setContactValue('email', e.target.value)} placeholder="tu@email.com" /></Field>
-              <Field label="Uso previsto"><Input value={contact.intendedUse} onChange={(e) => setContactValue('intendedUse', e.target.value)} placeholder="Ej. oficina, finca..." /></Field>
-              <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(e) => setConfigValue('province', e.target.value)} placeholder="Provincia" /></Field>
-              <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(e) => setConfigValue('city', e.target.value)} placeholder="Localidad" /></Field>
-            </div>
-            <div className="mt-4"><Field label="Comentarios"><textarea value={contact.comments} onChange={(e) => setContactValue('comments', e.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-blue-100" placeholder="Cuéntanos detalles de tu proyecto..." /></Field></div>
+          {config.layoutItems.map((item) => {
+            const selected = selectedItem?.id === item.id && !selectedChild;
+            const groupColor = isRoom(item) ? '#fb923c' : isBathroom(item) ? '#2dd4bf' : isEdgeElement(item) ? '#38bdf8' : '#cbd5e1';
+            return (
+              <g key={item.id} filter={selected ? 'url(#selectedGlow)' : undefined}>
+                <rect
+                  x={item.x}
+                  y={item.y}
+                  width={item.width}
+                  height={item.height}
+                  rx={isGrouped(item) ? 1.2 : 0.7}
+                  fill={isRoom(item) ? 'rgba(124,45,18,.72)' : isBathroom(item) ? 'rgba(19,78,74,.74)' : isEdgeElement(item) ? 'rgba(12,74,110,.75)' : item.itemType === 'wall_partition' ? '#e2e8f0' : 'rgba(30,41,59,.85)'}
+                  stroke={groupColor}
+                  strokeWidth={selected ? 0.75 : 0.35}
+                  onPointerDown={(event) => startItemDrag(event, item)}
+                  className={item.included ? 'cursor-default' : 'cursor-grab'}
+                />
 
-            <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-              <label className="flex gap-3"><input type="checkbox" checked={contact.accepted} onChange={(e) => setContactValue('accepted', e.target.checked)} /> <span>Acepto la política de privacidad y que Módulos Prefabricados San José S.L. contacte conmigo sobre esta solicitud.</span></label>
-              {errors.accepted && <p className="text-red-600">{errors.accepted}</p>}
-              <label className="flex gap-3"><input type="checkbox" checked={contact.newsletterSubscribed} onChange={(e) => setContactValue('newsletterSubscribed', e.target.checked)} /> <span>Quiero recibir novedades, ofertas y consejos sobre módulos prefabricados.</span></label>
-            </div>
+                {isGrouped(item) ? (
+                  <>
+                    <text x={item.x + item.width / 2} y={item.y + 4.2} textAnchor="middle" className="fill-white text-[2.4px] font-black">
+                      {isRoom(item) ? 'HABITACIÓN' : 'BAÑO'} · {formatCurrency(getLayoutItemPrice(item))}
+                    </text>
+                    <text x={item.x + item.width / 2} y={item.y + item.height - 2.2} textAnchor="middle" className="fill-slate-200 text-[1.8px] font-bold">
+                      {isRoom(item) ? 'Puerta · Ventana · Luz · Enchufe' : item.hasShowerTray === false ? 'Sin plato de ducha (-100 €)' : 'Sanitarios + plato ducha'}
+                    </text>
+                  </>
+                ) : item.itemType === 'wall_partition' ? (
+                  <text x={item.x + item.width / 2} y={item.y - 1.2} textAnchor="middle" className="fill-orange-200 text-[2px] font-black">Tabique simple · +300 €</text>
+                ) : (
+                  <BaseSymbol item={item} />
+                )}
 
-            {errors.submit && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errors.submit}</p>}
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setShowDownloadModal(false)}>Cancelar</Button>
-              <Button onClick={submit} disabled={isSubmitting} className="flex items-center gap-2"><Download size={18} /> {isSubmitting ? 'Generando...' : 'Descargar PDF'}</Button>
-            </div>
-          </div>
-        </div>
-      )}
+                {item.childItems?.filter((child) => child.type !== 'shower_tray' || item.hasShowerTray !== false).map((child) => {
+                  const box = getChildAbsoluteBox(item, child);
+                  const childSelected = selection?.kind === 'child' && selection.itemId === item.id && selection.childId === child.id;
+                  return (
+                    <g key={child.id} filter={childSelected ? 'url(#selectedGlow)' : undefined} onPointerDown={(event) => startChildDrag(event, item, child)} className="cursor-grab">
+                      <rect
+                        x={box.x}
+                        y={box.y}
+                        width={box.width}
+                        height={box.height}
+                        rx="0.7"
+                        fill={child.type === 'shower_tray' ? 'rgba(20,184,166,.45)' : 'rgba(15,23,42,.92)'}
+                        stroke={child.type === 'shower_tray' ? '#5eead4' : '#f8fafc'}
+                        strokeWidth={childSelected ? 0.55 : 0.25}
+                      />
+                      <text x={box.x + box.width / 2} y={box.y + box.height / 2 + 0.9} textAnchor="middle" className="pointer-events-none fill-white text-[2px] font-black">
+                        {childIcon(child.type)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 };
 
-const Step = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div>
-    <h2 className="mb-5 text-2xl font-black text-slate-900">{title}</h2>
-    {children}
-  </div>
-);
+export const Configurator = ({ onBack, onAdmin }: { onBack: () => void; onAdmin: () => void }) => {
+  const [config, setConfig] = useState<ConfiguratorState>(initialConfig());
+  const [contact, setContact] = useState<ContactFormState>(initialContact);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [history, setHistory] = useState<LayoutItem[][]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+  const price = useMemo(() => calculatePrice(config), [config]);
+  const selected = getSelected(config.layoutItems, selection);
+  const whatsappUrl = buildWhatsAppUrl(contact, config, price);
 
-const InfoPill = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded-2xl bg-slate-100 p-4">
-    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-    <p className="mt-1 text-lg font-black text-slate-900">{value}</p>
-  </div>
-);
+  const pushHistory = () => setHistory((prev) => [...prev.slice(-20), cloneLayout(config.layoutItems)]);
+
+  const setConfigValue = <K extends keyof ConfiguratorState>(key: K, value: ConfiguratorState[K]) => setConfig((prev) => ({ ...prev, [key]: value }));
+  const setContactValue = <K extends keyof ContactFormState>(key: K, value: ContactFormState[K]) => setContact((prev) => ({ ...prev, [key]: value }));
+
+  const addItem = (type: LayoutItemType) => {
+    pushHistory();
+    const item = makeLayoutItem(type, config.layoutItems);
+    setConfig((prev) => ({ ...prev, layoutItems: [...prev.layoutItems, item] }));
+    setSelection({ kind: 'item', itemId: item.id });
+  };
+
+  const removeSelected = () => {
+    if (!selection) return;
+    pushHistory();
+    if (selection.kind === 'item') {
+      const item = config.layoutItems.find((entry) => entry.id === selection.itemId);
+      if (!item || item.included) return;
+      setConfig((prev) => ({ ...prev, layoutItems: prev.layoutItems.filter((entry) => entry.id !== selection.itemId) }));
+      setSelection(null);
+      return;
+    }
+
+    const parent = config.layoutItems.find((entry) => entry.id === selection.itemId);
+    const child = parent?.childItems?.find((entry) => entry.id === selection.childId);
+    if (parent?.itemType === 'full_bathroom' && child?.type === 'shower_tray') {
+      setConfig((prev) => ({
+        ...prev,
+        layoutItems: prev.layoutItems.map((entry) => entry.id === parent.id ? { ...entry, hasShowerTray: false } : entry),
+      }));
+      setSelection({ kind: 'item', itemId: parent.id });
+    }
+  };
+
+  const duplicateSelected = () => {
+    if (!selected.item || selected.item.included) return;
+    pushHistory();
+    const copy: LayoutItem = {
+      ...selected.item,
+      id: uid(),
+      x: clamp(selected.item.x + 4, 0, 100 - selected.item.width),
+      y: clamp(selected.item.y + 4, 0, 100 - selected.item.height),
+      childItems: selected.item.childItems?.map((child) => ({ ...child, id: uid() })),
+    };
+    setConfig((prev) => ({ ...prev, layoutItems: [...prev.layoutItems, copy] }));
+    setSelection({ kind: 'item', itemId: copy.id });
+  };
+
+  const rotateSelected = () => {
+    if (!selected.item) return;
+    pushHistory();
+    setConfig((prev) => ({
+      ...prev,
+      layoutItems: prev.layoutItems.map((item) => item.id === selected.item?.id ? { ...item, rotation: (((item.rotation || 0) + 90) % 360) as 0 | 90 | 180 | 270 } : item),
+    }));
+  };
+
+  const undo = () => {
+    const last = history[history.length - 1];
+    if (!last) return;
+    setHistory((prev) => prev.slice(0, -1));
+    setConfig((prev) => ({ ...prev, layoutItems: cloneLayout(last) }));
+    setSelection(null);
+  };
+
+  const toggleShowerTray = () => {
+    if (!selected.item || selected.item.itemType !== 'full_bathroom') return;
+    pushHistory();
+    setConfig((prev) => ({
+      ...prev,
+      layoutItems: prev.layoutItems.map((item) => item.id === selected.item?.id ? { ...item, hasShowerTray: item.hasShowerTray === false } : item),
+    }));
+  };
+
+  const submit = async () => {
+    const nextErrors: Record<string, string> = {};
+    if (!contact.fullName.trim()) nextErrors.fullName = 'Indica tu nombre.';
+    if (!contact.phone.trim()) nextErrors.phone = 'Indica tu teléfono.';
+    if (!config.province.trim()) nextErrors.province = 'Indica la provincia.';
+    if (!config.city.trim()) nextErrors.city = 'Indica la localidad.';
+    if (!contact.accepted) nextErrors.accepted = 'Debes aceptar la política de privacidad.';
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    await createLead({ contact, config, price });
+    downloadConfiguratorPdf(contact, config, price);
+    setSaved(true);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-6">
+      <div className="mx-auto max-w-[1600px]">
+        <header className="mb-6 flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <button onClick={onBack} className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-950"><ArrowLeft size={16} /> Volver al inicio</button>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-orange">Configurador visual 2D</p>
+            <h1 className="mt-1 text-3xl font-black text-slate-950">Plano con habitación y baño editables</h1>
+            <p className="mt-2 max-w-3xl text-slate-600">La habitación y el baño ya incluyen sus elementos internos. Puedes mover cada puerta, ventana, enchufe, luz, sanitario o plato dentro de su bloque.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={undo} disabled={!history.length}><Undo2 size={16} /> Deshacer</Button>
+            <Button variant="ghost" onClick={onAdmin}>Panel privado</Button>
+            <a href={whatsappUrl} target="_blank" rel="noreferrer"><Button variant="secondary"><MessageCircle size={16} /> WhatsApp</Button></a>
+          </div>
+        </header>
+
+        {saved ? (
+          <Card className="mb-6 border-emerald-200 bg-emerald-50">
+            <div className="flex items-center gap-3 text-emerald-900"><CheckCircle2 /> <strong>Solicitud guardada y PDF generado.</strong></div>
+          </Card>
+        ) : null}
+
+        <div className="grid gap-6 xl:grid-cols-[310px_minmax(0,1fr)_350px]">
+          <aside className="space-y-5">
+            <Card>
+              <h2 className="text-lg font-black text-slate-950">Herramientas</h2>
+              <p className="mt-1 text-sm text-slate-500">Añade elementos al plano. Habitación y baño crean automáticamente sus elementos interactivos internos.</p>
+              <div className="mt-4 space-y-2">
+                {toolDefinitions.map((tool) => (
+                  <button key={tool.type} onClick={() => addItem(tool.type)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-brand-orange hover:bg-orange-50 hover:shadow-md">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white">{tool.icon}</span>
+                    <span><strong className="block text-slate-950">{tool.title}</strong><span className="text-xs text-slate-500">{tool.description}</span></span>
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            <Card>
+              <h2 className="text-lg font-black text-slate-950">Medidas y uso</h2>
+              <div className="mt-4 space-y-3">
+                <Field label="Largo">
+                  <Select value={config.length} onChange={(event) => setConfigValue('length', Number(event.target.value))}>{[3, 4, 5, 6, 7, 8].map((value) => <option key={value} value={value}>{value} m</option>)}</Select>
+                </Field>
+                <Field label="Ancho">
+                  <Select value={config.width} onChange={(event) => setConfigValue('width', Number(event.target.value))}><option value={2.4}>2,40 m</option><option value={2.5}>2,50 m</option><option value={3}>3,00 m</option></Select>
+                </Field>
+                <Field label="Uso">
+                  <Select value={config.useType} onChange={(event) => setConfigValue('useType', event.target.value as UseType)}>{useTypes.map((use) => <option key={use}>{use}</option>)}</Select>
+                </Field>
+                <Field label="Panel">
+                  <Select value={config.panelChoice} onChange={(event) => setConfigValue('panelChoice', event.target.value as PanelChoice)}>{panelChoices.map((choice) => <option key={choice}>{choice}</option>)}</Select>
+                </Field>
+              </div>
+            </Card>
+          </aside>
+
+          <PlanEditor config={config} setConfig={setConfig} selection={selection} setSelection={setSelection} pushHistory={pushHistory} />
+
+          <aside className="space-y-5">
+            <Card className="bg-orange-50 ring-1 ring-orange-100">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-orange">Precio orientativo</p>
+              <p className="mt-2 text-4xl font-black text-slate-950">{formatCurrency(price.estimatedPriceWithoutVat)}</p>
+              <p className="mt-1 text-sm text-slate-600">Sin IVA · Total con IVA: {formatCurrency(price.estimatedPriceWithVat)}</p>
+              <div className="mt-4 space-y-1 text-sm text-slate-700"><p>Base: <strong>{formatCurrency(price.basePrice)}</strong></p><p>Extras: <strong>{formatCurrency(price.extrasPrice)}</strong></p></div>
+            </Card>
+
+            <Card>
+              <h2 className="text-lg font-black text-slate-950">Propiedades</h2>
+              {selected.item ? (
+                <div className="mt-3 space-y-3">
+                  <p className="font-black text-slate-900">{selected.child ? selected.child.label : parentItemName(selected.item)}</p>
+                  <p className="text-sm text-slate-600">{selected.child ? 'Elemento incluido dentro del bloque. Puedes moverlo dentro de su habitación/baño.' : `Precio: ${formatPlanPrice(selected.item)}`}</p>
+
+                  {isRoom(selected.item) && !selected.child ? <div className="rounded-2xl bg-orange-50 p-3 text-sm font-semibold text-orange-900">Incluye puerta, ventana 80x80, punto de luz y enchufe. Cada elemento se puede mover dentro de la habitación.</div> : null}
+                  {isBathroom(selected.item) && !selected.child ? <div className="rounded-2xl bg-teal-50 p-3 text-sm font-semibold text-teal-900">Incluye puerta, ventana 40x40, luz, enchufes, lavabo, váter y plato de ducha opcional.</div> : null}
+
+                  {isBathroom(selected.item) && !selected.child ? <Button variant={selected.item.hasShowerTray === false ? 'outline' : 'secondary'} onClick={toggleShowerTray} className="w-full"><ShowerHead size={16} /> {selected.item.hasShowerTray === false ? `Añadir plato de ducha (+${formatCurrency(SHOWER_TRAY_DISCOUNT)})` : `Quitar plato de ducha (-${formatCurrency(SHOWER_TRAY_DISCOUNT)})`}</Button> : null}
+                  {selected.child?.type === 'shower_tray' ? <Button variant="danger" onClick={removeSelected} className="w-full"><Trash2 size={16} /> Quitar plato de ducha (-{formatCurrency(SHOWER_TRAY_DISCOUNT)})</Button> : null}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button variant="outline" onClick={rotateSelected} disabled={Boolean(selected.child)}><RotateCw size={16} /></Button>
+                    <Button variant="outline" onClick={duplicateSelected} disabled={Boolean(selected.child) || Boolean(selected.item.included)}><Copy size={16} /></Button>
+                    <Button variant="danger" onClick={removeSelected} disabled={Boolean(selected.item.included) && !selected.child}><Trash2 size={16} /></Button>
+                  </div>
+                </div>
+              ) : <p className="mt-3 rounded-2xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Selecciona un bloque o un elemento interno del plano.</p>}
+            </Card>
+
+            <Card>
+              <h2 className="text-lg font-black text-slate-950">Datos para presupuesto</h2>
+              <div className="mt-4 space-y-3">
+                <Field label="Nombre" error={errors.fullName}><Input value={contact.fullName} onChange={(event) => setContactValue('fullName', event.target.value)} /></Field>
+                <Field label="Teléfono" error={errors.phone}><Input value={contact.phone} onChange={(event) => setContactValue('phone', event.target.value)} /></Field>
+                <Field label="Email"><Input value={contact.email} onChange={(event) => setContactValue('email', event.target.value)} /></Field>
+                <Field label="Provincia" error={errors.province}><Input value={config.province} onChange={(event) => setConfigValue('province', event.target.value)} /></Field>
+                <Field label="Localidad" error={errors.city}><Input value={config.city} onChange={(event) => setConfigValue('city', event.target.value)} /></Field>
+                <Field label="Plazo"><Select value={config.deliveryTimeline} onChange={(event) => setConfigValue('deliveryTimeline', event.target.value as DeliveryTimeline)}>{deliveryTimelines.map((timeline) => <option key={timeline}>{timeline}</option>)}</Select></Field>
+                <Field label="Comentarios"><Textarea value={contact.comments} onChange={(event) => setContactValue('comments', event.target.value)} rows={3} /></Field>
+                <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={contact.accepted} onChange={(event) => setContactValue('accepted', event.target.checked)} className="mt-1" /> Acepto la política de privacidad.</label>
+                {errors.accepted ? <p className="text-sm text-red-600">{errors.accepted}</p> : null}
+                <Button onClick={submit} className="w-full"><Download size={16} /> Descargar PDF y guardar solicitud</Button>
+              </div>
+            </Card>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+};
