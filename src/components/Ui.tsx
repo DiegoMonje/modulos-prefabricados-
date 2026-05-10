@@ -39,8 +39,8 @@ export const Card = ({ children, className = '' }: { children: React.ReactNode; 
   <div className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${className}`}>{children}</div>
 );
 
-export const Field = ({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) => (
-  <label className="block">
+export const Field = ({ label, children, error, className = '' }: { label: string; children: React.ReactNode; error?: string; className?: string }) => (
+  <label className={`block ${className}`}>
     <span className="mb-1.5 block text-sm font-semibold text-slate-700">{label}</span>
     {children}
     {error && <span className="mt-1 block text-sm text-red-600">{error}</span>}
