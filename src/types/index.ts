@@ -43,6 +43,8 @@ export type LayoutItemType =
   | 'air_conditioning'
   | 'wall_partition';
 
+export type IncludedLayoutSource = 'bathroom' | 'room';
+
 export interface LayoutItem {
   id: string;
   itemType: LayoutItemType;
@@ -55,6 +57,10 @@ export interface LayoutItem {
   price: number;
   zone: 'edge' | 'inside';
   included?: boolean;
+  /** Parent block id when this is an included movable element generated inside a bathroom/room. */
+  parentId?: string;
+  /** Commercial source for included generated elements. These are visible/editable but not charged as extras. */
+  source?: IncludedLayoutSource;
   layoutOrientation?: 'transversal' | 'longitudinal';
   roomWidthMeters?: number;
   showerTrayWidthMeters?: 0.9 | 1 | null;
