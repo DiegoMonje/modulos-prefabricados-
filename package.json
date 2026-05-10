@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/patch-configurator-bathroom.cjs",
     "dev": "vite",
+    "prebuild": "node scripts/patch-configurator-bathroom.cjs",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
