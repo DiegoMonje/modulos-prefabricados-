@@ -1,0 +1,7 @@
+Marcador para forzar un despliegue después de restaurar el plano 2D al estado estable anterior.
+
+Estado esperado:
+- Canvas del plano restaurado al estado anterior.
+- Sin ProfessionalConfigurator experimental.
+- Sin parches runtime.
+- Sin reemplazo malo de LayoutPreview.
