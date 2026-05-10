@@ -199,6 +199,10 @@ export interface ConfigurationRow {
   additional_doors_quantity?: number;
   additional_socket_quantity?: number;
   layout_json?: LayoutItem[];
+  room_width_meters?: number;
+  bathroom_shower_tray_width_meters?: number;
+  bathroom_has_shower_tray?: boolean;
+  included_features_json?: string[];
   created_at: string;
 }
 
