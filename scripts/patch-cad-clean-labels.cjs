@@ -35,5 +35,28 @@ if (!source.includes('CAD_CLEAN_BATHROOM_LABELS_PATCH')) {
   source = source.replace(oldLabelBlock, newLabelBlock);
 }
 
+if (!source.includes('CAD_CLEAN_BATHROOM_BLOCK_PATCH')) {
+  const bathroomBlockRegex = /  if \(item\.itemType === 'full_bathroom'\) \{\n    return \([\s\S]*?\n    \);\n  \}\n\n  if \(item\.itemType === 'air_conditioning'\)/;
+  const bathroomBlockReplacement = `  if (item.itemType === 'full_bathroom') {
+    return (
+      <div className="relative h-full w-full overflow-hidden border-2 bg-teal-950/80 shadow-[inset_0_0_0_1px_rgba(94,234,212,0.14)]" style={{ borderColor: color }}>
+        <div className="absolute inset-x-0 top-0 h-1.5 bg-teal-200/90" />
+        <div className="absolute left-2 top-2 rounded bg-slate-950/70 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-teal-100 ring-1 ring-teal-300/20">
+          Baño
+        </div>
+        <span className="hidden">CAD_CLEAN_BATHROOM_BLOCK_PATCH</span>
+      </div>
+    );
+  }
+
+  if (item.itemType === 'air_conditioning')`;
+
+  if (!bathroomBlockRegex.test(source)) {
+    throw new Error('No se encontró el bloque visual de baño para limpiarlo.');
+  }
+
+  source = source.replace(bathroomBlockRegex, bathroomBlockReplacement);
+}
+
 fs.writeFileSync(filePath, source);
-console.log('CAD included bathroom labels cleaned.');
+console.log('CAD included bathroom labels and fixed bathroom block cleaned.');
