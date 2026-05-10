@@ -20,10 +20,9 @@ export const SHOWER_TRAY_DISCOUNT = 100;
 export const ROOM_INCLUDED_FEATURES = ['puerta', 'ventana 80x80', 'punto de luz', 'enchufe'];
 export const BATHROOM_INCLUDED_FEATURES = [
   'puerta',
-  'ventana 40x40',
+  'ventana 80x80',
   'punto de luz',
-  'enchufe interior',
-  'enchufe exterior para termo eléctrico',
+  'enchufe',
   'lavabo',
   'váter',
   'plato de ducha opcional',
@@ -73,8 +72,10 @@ const getShortModuleSurchargeRate = (length: number) => {
 };
 
 const isBathroomWithoutShowerTray = (item: LayoutItem) => item.itemType === 'full_bathroom' && item.hasShowerTray === false;
+const isIncludedGeneratedItem = (item: LayoutItem) => Boolean(item.included || item.parentId || item.source);
 
 export const getLayoutItemPrice = (item: LayoutItem) => {
+  if (isIncludedGeneratedItem(item)) return 0;
   if (isBathroomWithoutShowerTray(item)) return Math.max(0, item.price - SHOWER_TRAY_DISCOUNT);
   return item.price;
 };
@@ -91,24 +92,25 @@ export const calculateBasePrice = (config: Pick<ConfiguratorState, 'length' | 'w
 };
 
 export const summarizeLayoutItems = (items: LayoutItem[]): LayoutSummary => {
-  const count = (type: LayoutItemType) => items.filter((item) => item.itemType === type).length;
+  const billableItems = items.filter((item) => !item.parentId && !item.source);
+  const count = (type: LayoutItemType) => billableItems.filter((item) => item.itemType === type).length;
 
-  const additionalSockets = count('additional_socket');
-  const additionalDoors = count('additional_door');
-  const windows80x80 = count('window_80x80');
-  const largeWindows = count('large_window');
+  const additionalSockets = billableItems.filter((item) => item.itemType === 'additional_socket' && !item.included).length;
+  const additionalDoors = billableItems.filter((item) => item.itemType === 'additional_door' && !item.included).length;
+  const windows80x80 = billableItems.filter((item) => item.itemType === 'window_80x80' && !item.included).length;
+  const largeWindows = billableItems.filter((item) => item.itemType === 'large_window' && !item.included).length;
   const interiorRooms = count('interior_room');
   const fullBathrooms = count('full_bathroom');
-  const bathroomsWithoutShowerTray = items.filter(isBathroomWithoutShowerTray).length;
+  const bathroomsWithoutShowerTray = billableItems.filter(isBathroomWithoutShowerTray).length;
   const hasFullBathroom = fullBathrooms > 0;
-  const hasBathroomShowerTray = items.some((item) => item.itemType === 'full_bathroom' && item.hasShowerTray !== false);
+  const hasBathroomShowerTray = billableItems.some((item) => item.itemType === 'full_bathroom' && item.hasShowerTray !== false);
   const hasAirConditioning = count('air_conditioning') > 0;
   const wallPartitions = count('wall_partition');
-  const includedSocketQuantity = count('base_socket');
-  const includedLightPointQuantity = count('base_light_point');
-  const includedDoor = count('base_door') > 0;
-  const includedWindow80x80 = count('base_window_80x80') > 0;
-  const includedElectricalPanel = count('base_electrical_panel') > 0;
+  const includedSocketQuantity = items.filter((item) => item.itemType === 'base_socket' && !item.parentId).length;
+  const includedLightPointQuantity = items.filter((item) => item.itemType === 'base_light_point' && !item.parentId).length;
+  const includedDoor = items.some((item) => item.itemType === 'base_door' && !item.parentId);
+  const includedWindow80x80 = items.some((item) => item.itemType === 'base_window_80x80' && !item.parentId);
+  const includedElectricalPanel = items.some((item) => item.itemType === 'base_electrical_panel' && !item.parentId);
 
   const includedList: string[] = [];
   if (includedDoor) includedList.push('1 puerta incluida');
