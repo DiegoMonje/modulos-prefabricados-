@@ -40,6 +40,9 @@ export type LayoutItemType =
   | 'large_window'
   | 'interior_room'
   | 'full_bathroom'
+  | 'bathroom_sink'
+  | 'bathroom_wc'
+  | 'bathroom_shower'
   | 'air_conditioning'
   | 'wall_partition';
 
